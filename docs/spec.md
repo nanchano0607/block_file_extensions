@@ -293,7 +293,7 @@ CREATE TABLE extension_policy_history (
 > `js`, `sh`, `bat` 등 텍스트 기반 스크립트 파일은 고유한 매직 넘버가 없다는 한계가 있다 — 이 경우 1단계(확장자)가 사실상 1차 방어선이 되며, 매직넘버 검사는 "바이너리 실행파일이 문서 확장자로 위장한 경우"를 잡아내는 데 주된 효용이 있다. 이 한계는 `CONSIDERATIONS.md`에 명시한다.
 
 ### 4-4. Parser 구조 검증 (대표 타입 한정)
-- 대상: ZIP 기반 오피스 문서(docx/xlsx/pptx) — Apache POI로 실제 열기 시도, 이미지 파일(jpg/png) — `ImageIO.read()`로 디코딩 시도
+- 대상: ZIP 기반 오피스 문서(docx/xlsx/pptx) — Apache POI로 실제 열기 시도, 이미지 파일(jpg/jpeg/png/gif) — `ImageIO.read()`로 디코딩 시도
 - 실패(예외 발생/디코딩 불가) 시 차단
 - 그 외 확장자는 이 단계를 스킵(패스)하고 다음 단계로 진행 — 전체 확장자 구현은 비용 대비 효율이 낮다고 general.md에서 이미 결정
 
