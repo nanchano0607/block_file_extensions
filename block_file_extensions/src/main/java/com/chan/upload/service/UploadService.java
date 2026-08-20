@@ -14,9 +14,14 @@ import org.springframework.web.multipart.MultipartFile;
 public class UploadService {
 
     private final long maxFileSizeBytes;
+    private final ExtensionPolicyValidator extensionPolicyValidator;
 
-    public UploadService(@Value("${app.upload.max-file-size}") DataSize maxFileSize) {
+    public UploadService(
+            @Value("${app.upload.max-file-size}") DataSize maxFileSize,
+            ExtensionPolicyValidator extensionPolicyValidator
+    ) {
         this.maxFileSizeBytes = maxFileSize.toBytes();
+        this.extensionPolicyValidator = extensionPolicyValidator;
     }
 
     public UploadResponse upload(MultipartFile file) {
@@ -24,7 +29,9 @@ public class UploadService {
             throw new BusinessException(ErrorCode.UPLOAD_FILE_SIZE_EXCEEDED);
         }
 
-        ExtensionCandidateExtractor.extract(file.getOriginalFilename());
+        extensionPolicyValidator.validate(
+                ExtensionCandidateExtractor.extract(file.getOriginalFilename())
+        );
 
         return UploadResponse.pending(file.getOriginalFilename(), file.getSize());
     }

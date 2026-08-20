@@ -1,12 +1,14 @@
 package com.chan.upload.controller;
 
 import com.chan.upload.service.UploadService;
+import com.chan.upload.service.ExtensionPolicyValidator;
 
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
 import org.springframework.context.annotation.Import;
 import org.springframework.mock.web.MockMultipartFile;
+import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.multipart;
@@ -21,6 +23,9 @@ class UploadControllerTest {
 
     @Autowired
     MockMvc mockMvc;
+
+    @MockitoBean
+    ExtensionPolicyValidator extensionPolicyValidator;
 
     @Test
     void multipart_파일을_받아_성공_응답을_반환한다() throws Exception {
