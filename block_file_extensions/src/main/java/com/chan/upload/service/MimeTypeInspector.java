@@ -6,7 +6,6 @@ import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 import org.springframework.web.multipart.MultipartFile;
 
-import java.io.IOException;
 import java.io.InputStream;
 import java.util.Locale;
 
@@ -33,7 +32,9 @@ public class MimeTypeInspector {
                         detectedMime
                 );
             }
-        } catch (IOException exception) {
+        } catch (Exception exception) {
+            // MIME은 어떤 경우에도 차단 근거로 쓰지 않는다(로그 전용 단계). Tika의 내부 감지기는
+            // 손상된 입력에 대해 IOException이 아닌 RuntimeException을 던지기도 하므로 넓게 잡는다.
             log.warn(
                     "MIME_DETECTION_FAILED requestId={} filename={} requestedMime={}",
                     requestId,
