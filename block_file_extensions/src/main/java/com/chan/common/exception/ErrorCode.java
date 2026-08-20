@@ -9,7 +9,7 @@ public enum ErrorCode {
     FIXED_EXTENSION_DUPLICATED(HttpStatus.CONFLICT, "이미 고정 차단 목록에 있는 확장자입니다."),
     CUSTOM_EXTENSION_DUPLICATED(HttpStatus.CONFLICT, "이미 등록된 확장자입니다."),
     CUSTOM_EXTENSION_LIMIT_EXCEEDED(
-            HttpStatus.UNPROCESSABLE_ENTITY,
+            HttpStatus.UNPROCESSABLE_CONTENT,
             "커스텀 확장자는 최대 200개까지 등록할 수 있습니다."
     ),
     CUSTOM_EXTENSION_NOT_FOUND(HttpStatus.NOT_FOUND, "존재하지 않는 커스텀 확장자입니다.");
