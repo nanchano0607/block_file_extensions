@@ -1,6 +1,8 @@
 package com.chan.policy.controller;
 
 import com.chan.common.response.ApiResponse;
+import com.chan.policy.dto.CreateCustomExtensionRequest;
+import com.chan.policy.dto.CustomExtensionItemResponse;
 import com.chan.policy.dto.CustomExtensionListResponse;
 import com.chan.policy.dto.FixedExtensionResponse;
 import com.chan.policy.dto.UpdateFixedExtensionRequest;
@@ -11,9 +13,12 @@ import jakarta.validation.Valid;
 
 import lombok.RequiredArgsConstructor;
 
+import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
@@ -36,6 +41,17 @@ public class PolicyController {
     @GetMapping("/custom-extensions")
     public ApiResponse<CustomExtensionListResponse> getCustomExtensions() {
         return ApiResponse.success("조회되었습니다.", policyQueryService.getCustomExtensions());
+    }
+
+    @PostMapping("/custom-extensions")
+    public ResponseEntity<ApiResponse<CustomExtensionItemResponse>> createCustomExtension(
+            @RequestBody CreateCustomExtensionRequest request
+    ) {
+        return ResponseEntity.status(HttpStatus.CREATED)
+                .body(ApiResponse.success(
+                        "등록되었습니다.",
+                        policyCommandService.createCustomExtension(request.extension())
+                ));
     }
 
     @PatchMapping("/fixed-extensions/{extension}")

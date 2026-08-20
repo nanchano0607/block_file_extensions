@@ -1,6 +1,7 @@
 package com.chan.policy.controller;
 
 import com.chan.common.exception.BusinessException;
+import com.chan.common.exception.ErrorCode;
 import com.chan.policy.dto.CustomExtensionItemResponse;
 import com.chan.policy.dto.CustomExtensionListResponse;
 import com.chan.policy.dto.FixedExtensionResponse;
@@ -9,7 +10,6 @@ import com.chan.policy.service.PolicyQueryService;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
-import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
@@ -116,7 +116,7 @@ class PolicyControllerTest {
     @Test
     void 정의되지_않은_고정_확장자는_404를_반환한다() throws Exception {
         given(policyCommandService.updateFixedExtension("zip", true))
-                .willThrow(new BusinessException(HttpStatus.NOT_FOUND, "정의되지 않은 고정 확장자입니다."));
+                .willThrow(new BusinessException(ErrorCode.FIXED_EXTENSION_NOT_FOUND));
 
         mockMvc.perform(patch("/api/policy/fixed-extensions/zip")
                         .contentType(MediaType.APPLICATION_JSON)

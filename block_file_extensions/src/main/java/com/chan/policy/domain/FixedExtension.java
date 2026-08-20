@@ -25,6 +25,11 @@ public enum FixedExtension {
         return value;
     }
 
+    public static boolean contains(String value) {
+        return value != null && Arrays.stream(values())
+                .anyMatch(extension -> extension.value.equals(value));
+    }
+
     public static FixedExtension from(String value) {
         if (value == null) {
             throw new BusinessException(ErrorCode.FIXED_EXTENSION_NOT_FOUND);

@@ -1,5 +1,8 @@
 package com.chan.policy.domain;
 
+import com.chan.common.exception.BusinessException;
+import com.chan.common.exception.ErrorCode;
+
 import org.junit.jupiter.api.Test;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -22,6 +25,8 @@ class FixedExtensionTest {
     @Test
     void 정의되지_않은_확장자는_enum으로_변환할_수_없다() {
         assertThatThrownBy(() -> FixedExtension.from("zzz"))
-                .isInstanceOf(IllegalArgumentException.class);
+                .isInstanceOf(BusinessException.class)
+                .extracting(exception -> ((BusinessException) exception).getErrorCode())
+                .isEqualTo(ErrorCode.FIXED_EXTENSION_NOT_FOUND);
     }
 }

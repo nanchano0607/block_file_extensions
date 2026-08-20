@@ -4,4 +4,6 @@ import com.chan.policy.domain.CustomExtension;
 import org.springframework.data.jpa.repository.JpaRepository;
 
 public interface CustomExtensionRepository extends JpaRepository<CustomExtension, Long> {
+
+    boolean existsByExtension(String extension);
 }
