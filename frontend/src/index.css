@@ -1,0 +1,3 @@
+:root { font-family:'Manrope',-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif; color:#19201d; background:#fbfcf9; font-synthesis:none; text-rendering:optimizeLegibility; -webkit-font-smoothing:antialiased; }
+body { margin:0; min-width:320px; min-height:100vh; }
+button:focus-visible,input:focus-visible,a:focus-visible { outline:3px solid rgba(29,107,75,.25); outline-offset:2px; }

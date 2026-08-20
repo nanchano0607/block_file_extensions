@@ -1,0 +1,325 @@
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { policyApi } from './api/policyApi'
+import { uploadApi } from './api/uploadApi'
+import './App.css'
+
+const MAX_FILE_SIZE = 10 * 1024 * 1024
+
+function formatBytes(bytes) {
+  if (bytes < 1024) return `${bytes} B`
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`
+  return `${(bytes / 1024 / 1024).toFixed(1)} MB`
+}
+
+function candidatesOf(filename) {
+  if (!filename.includes('.')) return []
+  return filename.split('.').map((part) => part.trim().toLowerCase()).filter(Boolean)
+}
+
+function Spinner({ small = false }) {
+  return <span className={`spinner${small ? ' spinner--small' : ''}`} aria-hidden="true" />
+}
+
+function PolicyPanel({ onPolicyChange }) {
+  const [fixed, setFixed] = useState([])
+  const [custom, setCustom] = useState({ count: 0, limit: 200, items: [] })
+  const [input, setInput] = useState('')
+  const [loading, setLoading] = useState(true)
+  const [saving, setSaving] = useState(null)
+  const [adding, setAdding] = useState(false)
+  const [deleting, setDeleting] = useState(null)
+  const [loadError, setLoadError] = useState('')
+  const [formError, setFormError] = useState('')
+
+  const load = async () => {
+    setLoading(true)
+    setLoadError('')
+    try {
+      const [fixedData, customData] = await Promise.all([
+        policyApi.getFixed(),
+        policyApi.getCustom(),
+      ])
+      setFixed(fixedData)
+      setCustom(customData)
+      onPolicyChange?.(fixedData, customData.items)
+    } catch {
+      setLoadError('정책을 불러오지 못했습니다.')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  useEffect(() => {
+    let active = true
+    Promise.all([policyApi.getFixed(), policyApi.getCustom()])
+      .then(([fixedData, customData]) => {
+        if (!active) return
+        setFixed(fixedData)
+        setCustom(customData)
+        onPolicyChange?.(fixedData, customData.items)
+      })
+      .catch(() => {
+        if (active) setLoadError('정책을 불러오지 못했습니다.')
+      })
+      .finally(() => {
+        if (active) setLoading(false)
+      })
+    return () => { active = false }
+  }, [onPolicyChange])
+
+  const toggleFixed = async (item) => {
+    const nextBlocked = !item.blocked
+    setSaving(item.extension)
+    setFixed((items) => items.map((value) =>
+      value.extension === item.extension ? { ...value, blocked: nextBlocked } : value,
+    ))
+    try {
+      await policyApi.updateFixed(item.extension, nextBlocked)
+      const next = fixed.map((value) =>
+        value.extension === item.extension ? { ...value, blocked: nextBlocked } : value,
+      )
+      onPolicyChange?.(next, custom.items)
+    } catch (error) {
+      setFixed((items) => items.map((value) =>
+        value.extension === item.extension ? item : value,
+      ))
+      setFormError(error.message || '저장에 실패했습니다.')
+    } finally {
+      setSaving(null)
+    }
+  }
+
+  const addCustom = async (event) => {
+    event.preventDefault()
+    setFormError('')
+    const normalized = input.trim().toLowerCase()
+    if (!normalized || normalized.length > 20) {
+      setFormError('확장자는 1~20자로 입력해주세요.')
+      return
+    }
+    if (!/^[a-z0-9]+$/.test(normalized)) {
+      setFormError('영문/숫자만 입력 가능합니다.')
+      return
+    }
+    setAdding(true)
+    try {
+      const created = await policyApi.addCustom(normalized)
+      const next = { ...custom, count: custom.count + 1, items: [...custom.items, created] }
+      setCustom(next)
+      setInput('')
+      onPolicyChange?.(fixed, next.items)
+    } catch (error) {
+      setFormError(error.message || '일시적인 오류가 발생했습니다. 잠시 후 다시 시도해주세요.')
+    } finally {
+      setAdding(false)
+    }
+  }
+
+  const deleteCustom = async (item) => {
+    setFormError('')
+    setDeleting(item.id)
+    const previous = custom
+    const next = {
+      ...custom,
+      count: custom.count - 1,
+      items: custom.items.filter((value) => value.id !== item.id),
+    }
+    setCustom(next)
+    try {
+      await policyApi.deleteCustom(item.id)
+      onPolicyChange?.(fixed, next.items)
+    } catch (error) {
+      setCustom(previous)
+      setFormError(error.message || '삭제에 실패했습니다.')
+    } finally {
+      setDeleting(null)
+    }
+  }
+
+  if (loading) {
+    return <section className="panel panel--center"><Spinner /><p>차단 정책을 불러오는 중입니다.</p></section>
+  }
+
+  if (loadError) {
+    return (
+      <section className="panel panel--center">
+        <div className="status-icon status-icon--error">!</div>
+        <p>{loadError}</p>
+        <button className="button button--secondary" onClick={load}>다시 시도</button>
+      </section>
+    )
+  }
+
+  const atLimit = custom.count >= custom.limit
+
+  return (
+    <section className="panel" aria-labelledby="policy-title">
+      <div className="panel-heading">
+        <div>
+          <span className="eyebrow">POLICY</span>
+          <h2 id="policy-title">파일 확장자 차단</h2>
+          <p>등록한 정책은 파일 업로드 시 서버에서 최종 적용됩니다.</p>
+        </div>
+        <span className="save-state"><span className="save-dot" /> 자동 저장</span>
+      </div>
+
+      <div className="policy-section">
+        <div className="section-label">
+          <span className="section-number">01</span>
+          <div><h3>고정 확장자</h3><p>자주 차단하는 실행 파일 형식입니다.</p></div>
+        </div>
+        <div className="fixed-grid">
+          {fixed.map((item) => (
+            <label className={`check-card${item.blocked ? ' check-card--active' : ''}`} key={item.extension}>
+              <input type="checkbox" checked={item.blocked} disabled={saving === item.extension} onChange={() => toggleFixed(item)} />
+              <span className="custom-check">{item.blocked ? '✓' : ''}</span>
+              <span>.{item.extension}</span>
+              {saving === item.extension && <Spinner small />}
+            </label>
+          ))}
+        </div>
+      </div>
+
+      <div className="divider" />
+
+      <div className="policy-section">
+        <div className="section-label section-label--row">
+          <span className="section-number">02</span>
+          <div><h3>커스텀 확장자</h3><p>영문과 숫자 조합으로 최대 20자까지 등록할 수 있습니다.</p></div>
+          <strong className={atLimit ? 'counter counter--limit' : 'counter'}>{custom.count} / {custom.limit}</strong>
+        </div>
+        <form className="extension-form" onSubmit={addCustom}>
+          <div className="input-wrap">
+            <span className="input-prefix">.</span>
+            <input aria-label="커스텀 확장자" placeholder="확장자 입력" value={input} maxLength={20} disabled={atLimit || adding}
+              onChange={(event) => { setInput(event.target.value); setFormError('') }} />
+            <span className="character-count">{input.length}/20</span>
+          </div>
+          <button className="button button--primary" disabled={atLimit || adding || !input.trim()}>
+            {adding ? <><Spinner small /> 추가 중</> : '추가'}
+          </button>
+        </form>
+        {formError && <p className="inline-error" role="alert">{formError}</p>}
+        {atLimit && <p className="inline-error">커스텀 확장자는 최대 200개까지 등록할 수 있습니다.</p>}
+        <div className={`chip-box${custom.items.length === 0 ? ' chip-box--empty' : ''}`}>
+          {custom.items.length === 0 ? <p>등록된 커스텀 확장자가 없습니다.</p> : custom.items.map((item) => (
+            <span className="chip" key={item.id}>
+              .{item.extension}
+              <button type="button" aria-label={`${item.extension} 확장자 삭제`} disabled={deleting === item.id} onClick={() => deleteCustom(item)}>
+                {deleting === item.id ? <Spinner small /> : '×'}
+              </button>
+            </span>
+          ))}
+        </div>
+      </div>
+    </section>
+  )
+}
+
+function UploadPanel({ blockedExtensions }) {
+  const fileInput = useRef(null)
+  const [file, setFile] = useState(null)
+  const [dragging, setDragging] = useState(false)
+  const [state, setState] = useState('idle')
+  const [message, setMessage] = useState('')
+  const candidates = useMemo(() => file ? candidatesOf(file.name) : [], [file])
+  const extensionWarning = candidates.some((value) => blockedExtensions.has(value))
+  const sizeRejected = file && file.size > MAX_FILE_SIZE
+
+  const selectFile = (selected) => {
+    if (!selected) return
+    setFile(selected)
+    setState(selected.size > MAX_FILE_SIZE ? 'sizeRejected' : 'selected')
+    setMessage('')
+  }
+
+  const upload = async () => {
+    if (!file || sizeRejected) return
+    setState('uploading')
+    setMessage('')
+    try {
+      await uploadApi.upload(file, blockedExtensions)
+      setState('success')
+      setMessage('업로드에 성공했습니다.')
+    } catch (error) {
+      setState(error.status >= 500 ? 'serverError' : 'blocked')
+      setMessage(error.message || '일시적인 오류가 발생했습니다. 잠시 후 다시 시도해주세요.')
+    }
+  }
+
+  const reset = () => {
+    setFile(null); setState('idle'); setMessage('')
+    if (fileInput.current) fileInput.current.value = ''
+  }
+
+  if (state === 'success' || state === 'blocked' || state === 'serverError') {
+    const isSuccess = state === 'success'
+    return (
+      <section className="panel result-panel" aria-live="polite">
+        <div className={`status-icon ${isSuccess ? 'status-icon--success' : 'status-icon--error'}`}>{isSuccess ? '✓' : '!'}</div>
+        <span className="eyebrow">{isSuccess ? 'UPLOAD COMPLETE' : 'UPLOAD REJECTED'}</span>
+        <h2>{message}</h2>
+        {file && <p className="result-file">{file.name} · {formatBytes(file.size)}</p>}
+        <button className="button button--primary" onClick={reset}>{isSuccess ? '새 파일 업로드' : '다른 파일 선택'}</button>
+      </section>
+    )
+  }
+
+  return (
+    <section className="panel" aria-labelledby="upload-title">
+      <div className="panel-heading">
+        <div><span className="eyebrow">UPLOAD</span><h2 id="upload-title">안전한 파일 업로드</h2><p>파일은 정책 확인과 보안 검사를 거친 후 저장됩니다.</p></div>
+        <span className="limit-badge">최대 10 MB</span>
+      </div>
+      <div className={`drop-zone${dragging ? ' drop-zone--dragging' : ''}${file ? ' drop-zone--selected' : ''}`}
+        onDragEnter={(event) => { event.preventDefault(); setDragging(true) }} onDragOver={(event) => event.preventDefault()}
+        onDragLeave={() => setDragging(false)} onDrop={(event) => { event.preventDefault(); setDragging(false); selectFile(event.dataTransfer.files[0]) }}>
+        <input ref={fileInput} type="file" hidden onChange={(event) => selectFile(event.target.files[0])} />
+        <div className="upload-mark">↑</div>
+        {file ? <><strong>{file.name}</strong><span>{formatBytes(file.size)}</span><button className="text-button" type="button" onClick={() => fileInput.current?.click()}>파일 변경</button></>
+          : <><strong>파일을 여기로 끌어다 놓으세요</strong><span>또는</span><button className="button button--secondary" type="button" onClick={() => fileInput.current?.click()}>파일 선택</button></>}
+      </div>
+      {sizeRejected && <div className="notice notice--error" role="alert"><b>!</b> 파일 크기 제한을 초과했습니다.</div>}
+      {!sizeRejected && extensionWarning && <div className="notice notice--warning"><b>!</b> 현재 정책상 차단된 확장자일 수 있습니다. 최종 판단은 서버에서 수행합니다.</div>}
+      <div className="security-flow" aria-label="파일 검증 단계">
+        {['확장자', 'MIME', '파일 시그니처', '구조 검사', '악성코드'].map((label, index) => <div className="flow-item" key={label}><span>{index + 1}</span>{label}</div>)}
+      </div>
+      <button className="button button--primary button--full" disabled={!file || sizeRejected || state === 'uploading'} onClick={upload}>
+        {state === 'uploading' ? <><Spinner small /> 업로드 중...</> : '보안 검사 후 업로드'}
+      </button>
+    </section>
+  )
+}
+
+function App() {
+  const [tab, setTab] = useState('policy')
+  const [blockedExtensions, setBlockedExtensions] = useState(new Set())
+  const updatePolicy = useCallback((fixed, custom) => setBlockedExtensions(new Set([
+    ...fixed.filter((item) => item.blocked).map((item) => item.extension),
+    ...custom.map((item) => item.extension),
+  ])), [])
+
+  return (
+    <div className="app-shell">
+      <header className="topbar">
+        <a className="brand" href="#" onClick={(event) => { event.preventDefault(); setTab('policy') }}><span className="brand-mark">F</span><span>FileGuard</span></a>
+        <nav aria-label="주요 메뉴">
+          <button className={tab === 'policy' ? 'active' : ''} onClick={() => setTab('policy')}>차단 정책</button>
+          <button className={tab === 'upload' ? 'active' : ''} onClick={() => setTab('upload')}>파일 업로드</button>
+        </nav>
+        <span className="environment">LOCAL</span>
+      </header>
+      <main>
+        <div className="page-intro">
+          <p className="breadcrumb">SECURITY / FILE CONTROL</p>
+          <h1>{tab === 'policy' ? '업로드 보안 정책' : '파일 검사 및 업로드'}</h1>
+          <p>{tab === 'policy' ? '위험한 파일 형식을 등록하고 업로드 단계에서 차단하세요.' : '선택한 파일을 다단계 보안 검사 후 안전하게 저장합니다.'}</p>
+        </div>
+        {tab === 'policy' ? <PolicyPanel onPolicyChange={updatePolicy} /> : <UploadPanel blockedExtensions={blockedExtensions} />}
+      </main>
+      <footer><span>FileGuard</span><span>Server-side validation enabled</span></footer>
+    </div>
+  )
+}
+
+export default App
