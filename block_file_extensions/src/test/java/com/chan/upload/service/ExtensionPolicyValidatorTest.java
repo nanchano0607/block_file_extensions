@@ -32,7 +32,8 @@ class ExtensionPolicyValidatorTest {
         given(fixedExtensionPolicyRepository.findBlockedExtensionsAmong(any())).willReturn(List.of());
         given(customExtensionRepository.findRegisteredExtensionsAmong(any())).willReturn(List.of());
 
-        assertThatCode(() -> validator.validate(List.of("report", "pdf"))).doesNotThrowAnyException();
+        assertThatCode(() -> validator.validate(List.of("report", "pdf"), "request-id"))
+                .doesNotThrowAnyException();
     }
 
     @Test
@@ -40,7 +41,7 @@ class ExtensionPolicyValidatorTest {
         given(fixedExtensionPolicyRepository.findBlockedExtensionsAmong(any())).willReturn(List.of("exe"));
         given(customExtensionRepository.findRegisteredExtensionsAmong(any())).willReturn(List.of());
 
-        assertThatThrownBy(() -> validator.validate(List.of("file", "exe", "txt")))
+        assertThatThrownBy(() -> validator.validate(List.of("file", "exe", "txt"), "request-id"))
                 .isInstanceOf(BusinessException.class)
                 .extracting(exception -> ((BusinessException) exception).getErrorCode())
                 .isEqualTo(ErrorCode.UPLOAD_FILE_TYPE_NOT_ALLOWED);
@@ -51,7 +52,7 @@ class ExtensionPolicyValidatorTest {
         given(fixedExtensionPolicyRepository.findBlockedExtensionsAmong(any())).willReturn(List.of());
         given(customExtensionRepository.findRegisteredExtensionsAmong(any())).willReturn(List.of("sh"));
 
-        assertThatThrownBy(() -> validator.validate(List.of("script", "sh", "txt")))
+        assertThatThrownBy(() -> validator.validate(List.of("script", "sh", "txt"), "request-id"))
                 .isInstanceOf(BusinessException.class)
                 .extracting(exception -> ((BusinessException) exception).getErrorCode())
                 .isEqualTo(ErrorCode.UPLOAD_FILE_TYPE_NOT_ALLOWED);
@@ -62,7 +63,7 @@ class ExtensionPolicyValidatorTest {
         given(fixedExtensionPolicyRepository.findBlockedExtensionsAmong(any())).willReturn(List.of());
         given(customExtensionRepository.findRegisteredExtensionsAmong(any())).willReturn(List.of());
 
-        validator.validate(List.of("a", "b", "c", "d", "e"));
+        validator.validate(List.of("a", "b", "c", "d", "e"), "request-id");
 
         verify(fixedExtensionPolicyRepository, times(1)).findBlockedExtensionsAmong(any());
         verify(customExtensionRepository, times(1)).findRegisteredExtensionsAmong(any());

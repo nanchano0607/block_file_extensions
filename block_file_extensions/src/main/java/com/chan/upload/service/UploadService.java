@@ -56,6 +56,14 @@ public class UploadService {
         String originalFilename = originalFilename(file);
         List<String> extensionCandidates = List.of();
 
+        log.info(
+                "UPLOAD_PIPELINE_STARTED requestId={} filename={} sizeBytes={} requestedMime={}",
+                requestId,
+                originalFilename,
+                file.getSize(),
+                file.getContentType()
+        );
+
         try {
             if (file.getSize() > maxFileSizeBytes) {
                 throw new UploadBlockedException(
@@ -65,12 +73,16 @@ public class UploadService {
                 );
             }
 
-            extensionCandidates = ExtensionCandidateExtractor.extract(originalFilename);
-
-            extensionPolicyValidator.validate(extensionCandidates);
+            logStageStarted(requestId, 1, "EXTENSION_POLICY");
+            extensionCandidates = extractExtensionCandidates(originalFilename, requestId);
+            extensionPolicyValidator.validate(extensionCandidates, requestId);
+            logStageStarted(requestId, 2, "MIME_TYPE");
             mimeTypeInspector.inspect(file, requestId);
+            logStageStarted(requestId, 3, "MAGIC_NUMBER");
             magicNumberInspector.inspect(file, extensionCandidates, requestId);
+            logStageStarted(requestId, 4, "PARSER_STRUCTURE");
             parserStructureInspector.inspect(file, extensionCandidates, requestId);
+            logStageStarted(requestId, 5, "CLAMAV");
             clamAvScanner.scan(file, requestId);
 
             StoredFile storedFile = fileStorageService.store(file);
@@ -79,6 +91,13 @@ public class UploadService {
                     file.getSize(),
                     extensionCandidates,
                     storedFile
+            );
+            log.info(
+                    "UPLOAD_PIPELINE_COMPLETED requestId={} uploadFileId={} filename={} storedFilename={}",
+                    requestId,
+                    uploadFileId,
+                    originalFilename,
+                    storedFile.filename()
             );
             return UploadResponse.success(uploadFileId, originalFilename, file.getSize());
         } catch (RuntimeException exception) {
@@ -90,6 +109,29 @@ public class UploadService {
                     extensionCandidates,
                     context,
                     exception
+            );
+            throw exception;
+        }
+    }
+
+    private void logStageStarted(String requestId, int stage, String stageName) {
+        log.info(
+                "UPLOAD_STAGE_STARTED requestId={} stage={} stageName={}",
+                requestId,
+                stage,
+                stageName
+        );
+    }
+
+    private List<String> extractExtensionCandidates(String originalFilename, String requestId) {
+        try {
+            return ExtensionCandidateExtractor.extract(originalFilename);
+        } catch (UploadBlockedException exception) {
+            log.warn(
+                    "UPLOAD_STAGE_RESULT requestId={} stage=1 stageName=EXTENSION_POLICY status=BLOCKED reason=INVALID_EXTENSION_FORMAT filename={} detail={}",
+                    requestId,
+                    originalFilename,
+                    exception.getDetail()
             );
             throw exception;
         }

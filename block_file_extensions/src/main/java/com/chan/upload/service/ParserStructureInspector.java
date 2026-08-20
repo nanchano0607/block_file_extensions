@@ -15,6 +15,7 @@ import org.springframework.web.multipart.MultipartFile;
 import javax.imageio.ImageIO;
 import java.io.IOException;
 import java.io.InputStream;
+import java.util.ArrayList;
 import java.util.List;
 
 @Service
@@ -23,11 +24,30 @@ public class ParserStructureInspector {
     private static final Logger log = LoggerFactory.getLogger(ParserStructureInspector.class);
 
     public void inspect(MultipartFile file, List<String> extensionCandidates, String requestId) {
+        List<String> inspectedExtensions = new ArrayList<>();
         for (String extension : extensionCandidates) {
             if (supports(extension)) {
                 inspect(file, extension, requestId);
+                inspectedExtensions.add(extension);
             }
         }
+
+        if (inspectedExtensions.isEmpty()) {
+            log.info(
+                    "UPLOAD_STAGE_RESULT requestId={} stage=4 stageName=PARSER_STRUCTURE status=SKIPPED reason=UNSUPPORTED_EXTENSION filename={} candidates={}",
+                    requestId,
+                    file.getOriginalFilename(),
+                    extensionCandidates
+            );
+            return;
+        }
+
+        log.info(
+                "UPLOAD_STAGE_RESULT requestId={} stage=4 stageName=PARSER_STRUCTURE status=PASSED filename={} inspectedExtensions={}",
+                requestId,
+                file.getOriginalFilename(),
+                inspectedExtensions
+        );
     }
 
     private boolean supports(String extension) {
@@ -48,7 +68,7 @@ public class ParserStructureInspector {
             }
         } catch (Exception exception) {
             log.warn(
-                    "PARSER_STRUCTURE_BLOCKED requestId={} filename={} parserType={}",
+                    "UPLOAD_STAGE_RESULT requestId={} stage=4 stageName=PARSER_STRUCTURE status=BLOCKED reason=INVALID_STRUCTURE filename={} parserType={}",
                     requestId,
                     file.getOriginalFilename(),
                     extension,

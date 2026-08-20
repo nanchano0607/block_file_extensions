@@ -15,6 +15,7 @@ import java.util.List;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyLong;
+import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.BDDMockito.given;
@@ -52,7 +53,7 @@ class UploadServiceTest {
                 "file", "report.pdf", "application/pdf", "content".getBytes()
         );
         BusinessException plainBusinessException = new BusinessException(ErrorCode.UPLOAD_FILE_TYPE_NOT_ALLOWED);
-        willThrow(plainBusinessException).given(extensionPolicyValidator).validate(any());
+        willThrow(plainBusinessException).given(extensionPolicyValidator).validate(any(), anyString());
 
         assertThatThrownBy(() -> uploadService.upload(file)).isSameAs(plainBusinessException);
 

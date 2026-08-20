@@ -25,18 +25,27 @@ public class MimeTypeInspector {
 
             if (!requestedMime.equals(detectedMime)) {
                 log.warn(
-                        "MIME_MISMATCH requestId={} filename={} requestedMime={} detectedMime={}",
+                        "UPLOAD_STAGE_RESULT requestId={} stage=2 stageName=MIME_TYPE status=WARNING reason=MIME_MISMATCH filename={} requestedMime={} detectedMime={}",
                         requestId,
                         file.getOriginalFilename(),
                         requestedMime,
                         detectedMime
                 );
+                return;
             }
+
+            log.info(
+                    "UPLOAD_STAGE_RESULT requestId={} stage=2 stageName=MIME_TYPE status=PASSED filename={} requestedMime={} detectedMime={}",
+                    requestId,
+                    file.getOriginalFilename(),
+                    requestedMime,
+                    detectedMime
+            );
         } catch (Exception exception) {
             // MIME은 어떤 경우에도 차단 근거로 쓰지 않는다(로그 전용 단계). Tika의 내부 감지기는
             // 손상된 입력에 대해 IOException이 아닌 RuntimeException을 던지기도 하므로 넓게 잡는다.
             log.warn(
-                    "MIME_DETECTION_FAILED requestId={} filename={} requestedMime={}",
+                    "UPLOAD_STAGE_RESULT requestId={} stage=2 stageName=MIME_TYPE status=WARNING reason=MIME_DETECTION_FAILED filename={} requestedMime={}",
                     requestId,
                     file.getOriginalFilename(),
                     requestedMime,

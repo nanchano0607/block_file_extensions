@@ -60,7 +60,7 @@ public class ClamAvScanner {
             throw exception;
         } catch (IOException exception) {
             log.error(
-                    "CLAMAV_SCAN_FAILED requestId={} filename={} host={} port={}",
+                    "UPLOAD_STAGE_RESULT requestId={} stage=5 stageName=CLAMAV status=BLOCKED reason=SCAN_FAILED filename={} host={} port={}",
                     requestId,
                     file.getOriginalFilename(),
                     host,
@@ -142,11 +142,17 @@ public class ClamAvScanner {
 
     private void handleResponse(String response, MultipartFile file, String requestId) {
         if (response.endsWith("OK")) {
+            log.info(
+                    "UPLOAD_STAGE_RESULT requestId={} stage=5 stageName=CLAMAV status=PASSED filename={} response={}",
+                    requestId,
+                    file.getOriginalFilename(),
+                    response
+            );
             return;
         }
         if (response.endsWith("FOUND")) {
             log.warn(
-                    "CLAMAV_MALWARE_DETECTED requestId={} filename={} response={}",
+                    "UPLOAD_STAGE_RESULT requestId={} stage=5 stageName=CLAMAV status=BLOCKED reason=MALWARE_DETECTED filename={} response={}",
                     requestId,
                     file.getOriginalFilename(),
                     response
@@ -159,7 +165,7 @@ public class ClamAvScanner {
         }
 
         log.error(
-                "CLAMAV_INVALID_RESPONSE requestId={} filename={} response={}",
+                "UPLOAD_STAGE_RESULT requestId={} stage=5 stageName=CLAMAV status=BLOCKED reason=INVALID_RESPONSE filename={} response={}",
                 requestId,
                 file.getOriginalFilename(),
                 response

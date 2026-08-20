@@ -8,6 +8,8 @@ import com.chan.policy.repository.FixedExtensionPolicyRepository;
 
 import lombok.RequiredArgsConstructor;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -20,11 +22,17 @@ import java.util.Set;
 @Transactional(readOnly = true)
 public class ExtensionPolicyValidator {
 
+    private static final Logger log = LoggerFactory.getLogger(ExtensionPolicyValidator.class);
+
     private final FixedExtensionPolicyRepository fixedExtensionPolicyRepository;
     private final CustomExtensionRepository customExtensionRepository;
 
-    public void validate(List<String> candidates) {
+    public void validate(List<String> candidates, String requestId) {
         if (candidates.isEmpty()) {
+            log.info(
+                    "UPLOAD_STAGE_RESULT requestId={} stage=1 stageName=EXTENSION_POLICY status=SKIPPED reason=NO_CANDIDATES",
+                    requestId
+            );
             return;
         }
 
@@ -36,6 +44,12 @@ public class ExtensionPolicyValidator {
 
         for (String candidate : candidates) {
             if (blocked.contains(candidate)) {
+                log.warn(
+                        "UPLOAD_STAGE_RESULT requestId={} stage=1 stageName=EXTENSION_POLICY status=BLOCKED matchedExtension={} candidates={}",
+                        requestId,
+                        candidate,
+                        candidates
+                );
                 throw new UploadBlockedException(
                         ErrorCode.UPLOAD_FILE_TYPE_NOT_ALLOWED,
                         BlockReasonCategory.EXTENSION_BLOCKED,
@@ -44,5 +58,11 @@ public class ExtensionPolicyValidator {
                 );
             }
         }
+
+        log.info(
+                "UPLOAD_STAGE_RESULT requestId={} stage=1 stageName=EXTENSION_POLICY status=PASSED candidates={}",
+                requestId,
+                candidates
+        );
     }
 }
