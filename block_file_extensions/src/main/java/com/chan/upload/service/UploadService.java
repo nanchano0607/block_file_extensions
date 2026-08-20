@@ -2,6 +2,7 @@ package com.chan.upload.service;
 
 import com.chan.common.exception.BusinessException;
 import com.chan.common.exception.ErrorCode;
+import com.chan.upload.domain.ExtensionCandidateExtractor;
 import com.chan.upload.dto.UploadResponse;
 
 import org.springframework.beans.factory.annotation.Value;
@@ -22,6 +23,8 @@ public class UploadService {
         if (file.getSize() > maxFileSizeBytes) {
             throw new BusinessException(ErrorCode.UPLOAD_FILE_SIZE_EXCEEDED);
         }
+
+        ExtensionCandidateExtractor.extract(file.getOriginalFilename());
 
         return UploadResponse.pending(file.getOriginalFilename(), file.getSize());
     }

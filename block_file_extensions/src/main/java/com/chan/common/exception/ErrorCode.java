@@ -13,7 +13,8 @@ public enum ErrorCode {
             "커스텀 확장자는 최대 200개까지 등록할 수 있습니다."
     ),
     CUSTOM_EXTENSION_NOT_FOUND(HttpStatus.NOT_FOUND, "존재하지 않는 커스텀 확장자입니다."),
-    UPLOAD_FILE_SIZE_EXCEEDED(HttpStatus.UNPROCESSABLE_CONTENT, "파일 크기 제한을 초과했습니다.");
+    UPLOAD_FILE_SIZE_EXCEEDED(HttpStatus.UNPROCESSABLE_CONTENT, "파일 크기 제한을 초과했습니다."),
+    UPLOAD_FILE_TYPE_NOT_ALLOWED(HttpStatus.UNPROCESSABLE_CONTENT, "허용되지 않는 파일 형식입니다.");
 
     private final HttpStatus status;
     private final String message;

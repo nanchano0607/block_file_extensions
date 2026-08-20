@@ -41,7 +41,7 @@ class UploadControllerTest {
     }
 
     @Test
-    void 아직_확장자를_검증하지_않으므로_exe_파일도_성공한다() throws Exception {
+    void 아직_정책과_대조하지_않으므로_exe_파일도_성공한다() throws Exception {
         MockMultipartFile file = new MockMultipartFile(
                 "file",
                 "sample.exe",
@@ -54,6 +54,38 @@ class UploadControllerTest {
                 .andExpect(jsonPath("$.success").value(true))
                 .andExpect(jsonPath("$.data.originalFilename").value("sample.exe"))
                 .andExpect(jsonPath("$.data.sizeBytes").value(2));
+    }
+
+    @Test
+    void 확장자가_없는_파일은_422로_차단한다() throws Exception {
+        MockMultipartFile file = new MockMultipartFile(
+                "file",
+                "Makefile",
+                "application/octet-stream",
+                "content".getBytes()
+        );
+
+        mockMvc.perform(multipart("/api/upload").file(file))
+                .andExpect(status().isUnprocessableContent())
+                .andExpect(jsonPath("$.success").value(false))
+                .andExpect(jsonPath("$.message").value("허용되지 않는 파일 형식입니다."))
+                .andExpect(jsonPath("$.data").doesNotExist());
+    }
+
+    @Test
+    void 점만_있는_파일은_422로_차단한다() throws Exception {
+        MockMultipartFile file = new MockMultipartFile(
+                "file",
+                "...",
+                "application/octet-stream",
+                "content".getBytes()
+        );
+
+        mockMvc.perform(multipart("/api/upload").file(file))
+                .andExpect(status().isUnprocessableContent())
+                .andExpect(jsonPath("$.success").value(false))
+                .andExpect(jsonPath("$.message").value("허용되지 않는 파일 형식입니다."))
+                .andExpect(jsonPath("$.data").doesNotExist());
     }
 
     @Test
