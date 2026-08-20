@@ -2,6 +2,7 @@
 
 :root { --ink:#19201d; --muted:#69716d; --line:#dfe3df; --paper:#fbfcf9; --surface:#fff; --green:#1d6b4b; --green-soft:#eaf4ee; --lime:#c7f36b; --red:#bd3f3f; --red-soft:#fff0ee; --amber:#916312; --amber-soft:#fff7df; }
 * { box-sizing:border-box; }
+html { scroll-behavior:smooth; scroll-padding-top:96px; }
 button,input { font:inherit; }
 button { cursor:pointer; }
 button:disabled { cursor:not-allowed; }
@@ -10,15 +11,17 @@ button:disabled { cursor:not-allowed; }
 .brand { color:var(--ink); text-decoration:none; font-weight:800; display:flex; align-items:center; gap:10px; letter-spacing:-.03em; }
 .brand-mark { width:30px; height:30px; display:grid; place-items:center; background:var(--ink); color:var(--lime); border-radius:7px; font-family:'DM Mono',monospace; }
 .topbar nav { display:flex; height:100%; gap:28px; margin:0 auto; }
-.topbar nav button { border:0; background:none; color:var(--muted); position:relative; font-size:14px; font-weight:600; }
-.topbar nav button.active { color:var(--ink); }
-.topbar nav button.active::after { content:''; height:2px; background:var(--green); position:absolute; left:0; right:0; bottom:0; }
+.topbar nav a { color:var(--muted); text-decoration:none; display:flex; align-items:center; position:relative; font-size:14px; font-weight:600; }
+.topbar nav a:hover { color:var(--ink); }
+.topbar nav a::after { content:''; height:2px; background:var(--green); position:absolute; left:0; right:0; bottom:0; transform:scaleX(0); transition:transform .18s ease; }
+.topbar nav a:hover::after,.topbar nav a:focus-visible::after { transform:scaleX(1); }
 .environment { font:500 11px 'DM Mono',monospace; border:1px solid var(--line); border-radius:99px; padding:5px 9px; color:var(--muted); }
 main { width:min(920px,calc(100% - 40px)); margin:0 auto; padding:70px 0 90px; flex:1; }
 .page-intro { margin-bottom:32px; }
 .breadcrumb,.eyebrow { color:var(--green); font:500 11px 'DM Mono',monospace; letter-spacing:.13em; }
 .page-intro h1 { font-size:clamp(36px,5vw,54px); line-height:1.05; letter-spacing:-.055em; margin:13px 0 14px; }
 .page-intro>p:last-child { color:var(--muted); }
+.page-stack { display:grid; gap:28px; }
 .panel { background:var(--surface); border:1px solid var(--line); border-radius:18px; padding:clamp(24px,5vw,44px); box-shadow:0 20px 55px rgba(25,32,29,.06); }
 .panel--center { min-height:350px; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:18px; color:var(--muted); }
 .panel-heading { display:flex; justify-content:space-between; align-items:flex-start; gap:24px; margin-bottom:42px; }

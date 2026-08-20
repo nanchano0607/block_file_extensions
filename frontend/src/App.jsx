@@ -4,6 +4,7 @@ import { uploadApi } from './api/uploadApi'
 import './App.css'
 
 const MAX_FILE_SIZE = 10 * 1024 * 1024
+const SERVER_ERROR_MESSAGE = '일시적인 오류가 발생했습니다. 잠시 후 다시 시도해주세요.'
 
 function formatBytes(bytes) {
   if (bytes < 1024) return `${bytes} B`
@@ -144,12 +145,12 @@ function PolicyPanel({ onPolicyChange }) {
   }
 
   if (loading) {
-    return <section className="panel panel--center"><Spinner /><p>차단 정책을 불러오는 중입니다.</p></section>
+    return <section id="policy" className="panel panel--center"><Spinner /><p>차단 정책을 불러오는 중입니다.</p></section>
   }
 
   if (loadError) {
     return (
-      <section className="panel panel--center">
+      <section id="policy" className="panel panel--center">
         <div className="status-icon status-icon--error">!</div>
         <p>{loadError}</p>
         <button className="button button--secondary" onClick={load}>다시 시도</button>
@@ -160,7 +161,7 @@ function PolicyPanel({ onPolicyChange }) {
   const atLimit = custom.count >= custom.limit
 
   return (
-    <section className="panel" aria-labelledby="policy-title">
+    <section id="policy" className="panel" aria-labelledby="policy-title">
       <div className="panel-heading">
         <div>
           <span className="eyebrow">POLICY</span>
@@ -235,7 +236,7 @@ function UploadPanel({ blockedExtensions }) {
   const sizeRejected = file && file.size > MAX_FILE_SIZE
 
   const selectFile = (selected) => {
-    if (!selected) return
+    if (!selected || state === 'uploading') return
     setFile(selected)
     setState(selected.size > MAX_FILE_SIZE ? 'sizeRejected' : 'selected')
     setMessage('')
@@ -246,52 +247,56 @@ function UploadPanel({ blockedExtensions }) {
     setState('uploading')
     setMessage('')
     try {
-      await uploadApi.upload(file, blockedExtensions)
+      await uploadApi.upload(file)
       setState('success')
       setMessage('업로드에 성공했습니다.')
     } catch (error) {
-      setState(error.status >= 500 ? 'serverError' : 'blocked')
-      setMessage(error.message || '일시적인 오류가 발생했습니다. 잠시 후 다시 시도해주세요.')
+      const serverError = !error.status || error.status >= 500
+      setState(serverError ? 'serverError' : 'blocked')
+      setMessage(serverError ? SERVER_ERROR_MESSAGE : (error.message || SERVER_ERROR_MESSAGE))
     }
   }
 
   const reset = () => {
-    setFile(null); setState('idle'); setMessage('')
+    setFile(null); setDragging(false); setState('idle'); setMessage('')
     if (fileInput.current) fileInput.current.value = ''
   }
 
   if (state === 'success' || state === 'blocked' || state === 'serverError') {
     const isSuccess = state === 'success'
+    const isServerError = state === 'serverError'
     return (
-      <section className="panel result-panel" aria-live="polite">
+      <section id="upload" className="panel result-panel" aria-live="polite">
         <div className={`status-icon ${isSuccess ? 'status-icon--success' : 'status-icon--error'}`}>{isSuccess ? '✓' : '!'}</div>
-        <span className="eyebrow">{isSuccess ? 'UPLOAD COMPLETE' : 'UPLOAD REJECTED'}</span>
+        <span className="eyebrow">{isSuccess ? 'UPLOAD COMPLETE' : isServerError ? 'UPLOAD ERROR' : 'UPLOAD REJECTED'}</span>
         <h2>{message}</h2>
         {file && <p className="result-file">{file.name} · {formatBytes(file.size)}</p>}
-        <button className="button button--primary" onClick={reset}>{isSuccess ? '새 파일 업로드' : '다른 파일 선택'}</button>
+        <button className="button button--primary" onClick={isServerError ? upload : reset}>
+          {isSuccess ? '새 파일 업로드' : isServerError ? '다시 시도' : '다른 파일 선택'}
+        </button>
       </section>
     )
   }
 
   return (
-    <section className="panel" aria-labelledby="upload-title">
+    <section id="upload" className="panel" aria-labelledby="upload-title">
       <div className="panel-heading">
         <div><span className="eyebrow">UPLOAD</span><h2 id="upload-title">안전한 파일 업로드</h2><p>파일은 정책 확인과 보안 검사를 거친 후 저장됩니다.</p></div>
         <span className="limit-badge">최대 10 MB</span>
       </div>
       <div className={`drop-zone${dragging ? ' drop-zone--dragging' : ''}${file ? ' drop-zone--selected' : ''}`}
-        onDragEnter={(event) => { event.preventDefault(); setDragging(true) }} onDragOver={(event) => event.preventDefault()}
-        onDragLeave={() => setDragging(false)} onDrop={(event) => { event.preventDefault(); setDragging(false); selectFile(event.dataTransfer.files[0]) }}>
-        <input ref={fileInput} type="file" hidden onChange={(event) => selectFile(event.target.files[0])} />
+        aria-busy={state === 'uploading'}
+        onDragEnter={(event) => { event.preventDefault(); if (state !== 'uploading') setDragging(true) }}
+        onDragOver={(event) => event.preventDefault()}
+        onDragLeave={() => setDragging(false)}
+        onDrop={(event) => { event.preventDefault(); setDragging(false); selectFile(event.dataTransfer.files[0]) }}>
+        <input ref={fileInput} type="file" hidden disabled={state === 'uploading'} onChange={(event) => selectFile(event.target.files[0])} />
         <div className="upload-mark">↑</div>
-        {file ? <><strong>{file.name}</strong><span>{formatBytes(file.size)}</span><button className="text-button" type="button" onClick={() => fileInput.current?.click()}>파일 변경</button></>
+        {file ? <><strong>{file.name}</strong><span>{formatBytes(file.size)}</span><button className="text-button" type="button" disabled={state === 'uploading'} onClick={() => fileInput.current?.click()}>파일 변경</button></>
           : <><strong>파일을 여기로 끌어다 놓으세요</strong><span>또는</span><button className="button button--secondary" type="button" onClick={() => fileInput.current?.click()}>파일 선택</button></>}
       </div>
       {sizeRejected && <div className="notice notice--error" role="alert"><b>!</b> 파일 크기 제한을 초과했습니다.</div>}
       {!sizeRejected && extensionWarning && <div className="notice notice--warning"><b>!</b> 현재 정책상 차단된 확장자일 수 있습니다. 최종 판단은 서버에서 수행합니다.</div>}
-      <div className="security-flow" aria-label="파일 검증 단계">
-        {['확장자', 'MIME', '파일 시그니처', '구조 검사', '악성코드'].map((label, index) => <div className="flow-item" key={label}><span>{index + 1}</span>{label}</div>)}
-      </div>
       <button className="button button--primary button--full" disabled={!file || sizeRejected || state === 'uploading'} onClick={upload}>
         {state === 'uploading' ? <><Spinner small /> 업로드 중...</> : '보안 검사 후 업로드'}
       </button>
@@ -300,7 +305,6 @@ function UploadPanel({ blockedExtensions }) {
 }
 
 function App() {
-  const [tab, setTab] = useState('policy')
   const [blockedExtensions, setBlockedExtensions] = useState(new Set())
   const updatePolicy = useCallback((fixed, custom) => setBlockedExtensions(new Set([
     ...fixed.filter((item) => item.blocked).map((item) => item.extension),
@@ -310,20 +314,23 @@ function App() {
   return (
     <div className="app-shell">
       <header className="topbar">
-        <a className="brand" href="#" onClick={(event) => { event.preventDefault(); setTab('policy') }}><span className="brand-mark">F</span><span>FileGuard</span></a>
+        <a className="brand" href="#top"><span className="brand-mark">F</span><span>FileGuard</span></a>
         <nav aria-label="주요 메뉴">
-          <button className={tab === 'policy' ? 'active' : ''} onClick={() => setTab('policy')}>차단 정책</button>
-          <button className={tab === 'upload' ? 'active' : ''} onClick={() => setTab('upload')}>파일 업로드</button>
+          <a href="#policy">차단 정책</a>
+          <a href="#upload">파일 업로드</a>
         </nav>
         <span className="environment">LOCAL</span>
       </header>
-      <main>
+      <main id="top">
         <div className="page-intro">
           <p className="breadcrumb">SECURITY / FILE CONTROL</p>
-          <h1>{tab === 'policy' ? '업로드 보안 정책' : '파일 검사 및 업로드'}</h1>
-          <p>{tab === 'policy' ? '위험한 파일 형식을 등록하고 업로드 단계에서 차단하세요.' : '선택한 파일을 다단계 보안 검사 후 안전하게 저장합니다.'}</p>
+          <h1>파일 업로드 보안</h1>
+          <p>차단 정책을 관리하고, 선택한 파일을 다단계 보안 검사 후 안전하게 저장하세요.</p>
         </div>
-        {tab === 'policy' ? <PolicyPanel onPolicyChange={updatePolicy} /> : <UploadPanel blockedExtensions={blockedExtensions} />}
+        <div className="page-stack">
+          <PolicyPanel onPolicyChange={updatePolicy} />
+          <UploadPanel blockedExtensions={blockedExtensions} />
+        </div>
       </main>
       <footer><span>FileGuard</span><span>Server-side validation enabled</span></footer>
     </div>
