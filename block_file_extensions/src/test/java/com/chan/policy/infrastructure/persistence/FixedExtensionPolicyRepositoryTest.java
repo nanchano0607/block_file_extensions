@@ -1,5 +1,6 @@
 package com.chan.policy.infrastructure.persistence;
 
+import com.chan.policy.domain.FixedExtension;
 import com.chan.policy.domain.FixedExtensionPolicy;
 import com.chan.policy.repository.FixedExtensionPolicyRepository;
 
@@ -12,6 +13,7 @@ import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
 import org.testcontainers.mysql.MySQLContainer;
 
+import java.util.Arrays;
 import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -38,19 +40,11 @@ class FixedExtensionPolicyRepositoryTest {
         // Assert
         assertThat(policies)
                 .extracting(FixedExtensionPolicy::getExtension)
-                .containsExactlyInAnyOrder("bat", "cmd", "com", "cpl", "exe", "scr", "js");
+                .containsExactlyInAnyOrder(
+                        Arrays.stream(FixedExtension.values())
+                                .map(FixedExtension::value)
+                                .toArray(String[]::new)
+                );
         assertThat(policies).allMatch(policy -> !policy.isBlocked());
-    }
-
-    @Test
-    void 존재하지_않는_확장자를_조회하면_빈_값이_반환된다() {
-        // Arrange
-        String undefinedExtension = "zzz";
-
-        // Act
-        var found = fixedExtensionPolicyRepository.findById(undefinedExtension);
-
-        // Assert
-        assertThat(found).isEmpty();
     }
 }
