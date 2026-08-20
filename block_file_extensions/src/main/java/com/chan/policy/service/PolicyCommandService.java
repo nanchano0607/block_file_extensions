@@ -53,4 +53,11 @@ public class PolicyCommandService {
             throw new BusinessException(ErrorCode.CUSTOM_EXTENSION_DUPLICATED);
         }
     }
+
+    public void deleteCustomExtension(Long id) {
+        CustomExtension customExtension = customExtensionRepository.findById(id)
+                .orElseThrow(() -> new BusinessException(ErrorCode.CUSTOM_EXTENSION_NOT_FOUND));
+
+        customExtensionRepository.delete(customExtension);
+    }
 }

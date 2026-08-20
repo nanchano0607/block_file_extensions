@@ -20,6 +20,7 @@ import org.testcontainers.mysql.MySQLContainer;
 import java.util.stream.IntStream;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
@@ -65,6 +66,31 @@ class CustomExtensionIntegrationTest {
         assertThat(saved.getId()).isEqualTo(responseId.longValue());
         assertThat(saved.getExtension()).isEqualTo("ps1");
         assertThat(saved.getCreatedAt()).isNotNull();
+    }
+
+    @Test
+    void 존재하는_커스텀_확장자를_삭제한다() throws Exception {
+        CustomExtension saved = customExtensionRepository.saveAndFlush(new CustomExtension("sh"));
+
+        mockMvc.perform(delete("/api/policy/custom-extensions/{id}", saved.getId()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.success").value(true))
+                .andExpect(jsonPath("$.message").value("삭제되었습니다."))
+                .andExpect(jsonPath("$.data").doesNotExist());
+
+        assertThat(customExtensionRepository.existsById(saved.getId())).isFalse();
+        assertThat(customExtensionRepository.count()).isZero();
+    }
+
+    @Test
+    void 존재하지_않는_커스텀_확장자_삭제는_404를_반환한다() throws Exception {
+        mockMvc.perform(delete("/api/policy/custom-extensions/{id}", Long.MAX_VALUE))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.success").value(false))
+                .andExpect(jsonPath("$.message").value("존재하지 않는 커스텀 확장자입니다."))
+                .andExpect(jsonPath("$.data").doesNotExist());
+
+        assertThat(customExtensionRepository.count()).isZero();
     }
 
     @Test
