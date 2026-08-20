@@ -1,0 +1,56 @@
+package com.chan.policy.infrastructure.persistence;
+
+import com.chan.policy.domain.FixedExtensionPolicy;
+import com.chan.policy.repository.FixedExtensionPolicyRepository;
+
+import org.junit.jupiter.api.Test;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.data.jpa.test.autoconfigure.DataJpaTest;
+import org.springframework.boot.jdbc.test.autoconfigure.AutoConfigureTestDatabase;
+import org.springframework.boot.testcontainers.service.connection.ServiceConnection;
+import org.testcontainers.junit.jupiter.Container;
+import org.testcontainers.junit.jupiter.Testcontainers;
+import org.testcontainers.mysql.MySQLContainer;
+
+import java.util.List;
+
+import static org.assertj.core.api.Assertions.assertThat;
+
+@Testcontainers
+@DataJpaTest
+@AutoConfigureTestDatabase(replace = AutoConfigureTestDatabase.Replace.NONE)
+class FixedExtensionPolicyRepositoryTest {
+
+    @Container
+    @ServiceConnection
+    static final MySQLContainer MYSQL = new MySQLContainer("mysql:8.4");
+
+    @Autowired
+    FixedExtensionPolicyRepository fixedExtensionPolicyRepository;
+
+    @Test
+    void 고정_확장자_7종이_기본_unchecked_상태로_시드된다() {
+        // Arrange: V1__init.sql의 seed 데이터가 Flyway로 이미 적용된 상태
+
+        // Act
+        List<FixedExtensionPolicy> policies = fixedExtensionPolicyRepository.findAll();
+
+        // Assert
+        assertThat(policies)
+                .extracting(FixedExtensionPolicy::getExtension)
+                .containsExactlyInAnyOrder("bat", "cmd", "com", "cpl", "exe", "scr", "js");
+        assertThat(policies).allMatch(policy -> !policy.isBlocked());
+    }
+
+    @Test
+    void 존재하지_않는_확장자를_조회하면_빈_값이_반환된다() {
+        // Arrange
+        String undefinedExtension = "zzz";
+
+        // Act
+        var found = fixedExtensionPolicyRepository.findById(undefinedExtension);
+
+        // Assert
+        assertThat(found).isEmpty();
+    }
+}
