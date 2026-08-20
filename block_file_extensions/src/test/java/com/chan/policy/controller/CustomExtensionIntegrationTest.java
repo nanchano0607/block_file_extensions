@@ -17,6 +17,13 @@ import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
 import org.testcontainers.mysql.MySQLContainer;
 
+import java.util.ArrayList;
+import java.util.List;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+import java.util.concurrent.TimeUnit;
 import java.util.stream.IntStream;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -129,6 +136,52 @@ class CustomExtensionIntegrationTest {
 
         assertErrorResponse("new", 422, "커스텀 확장자는 최대 200개까지 등록할 수 있습니다.");
         assertThat(customExtensionRepository.count()).isEqualTo(200);
+    }
+
+    @Test
+    void 동시에_두_요청이_들어와도_200개_한도를_넘기지_않는다() throws Exception {
+        customExtensionRepository.saveAllAndFlush(
+                IntStream.range(0, 199)
+                        .mapToObj(index -> new CustomExtension("y" + index))
+                        .toList()
+        );
+
+        CountDownLatch ready = new CountDownLatch(2);
+        CountDownLatch start = new CountDownLatch(1);
+        ExecutorService executor = Executors.newFixedThreadPool(2);
+        try {
+            List<Future<Integer>> futures = List.of(
+                    executor.submit(() -> requestStatus(ready, start, "aaa")),
+                    executor.submit(() -> requestStatus(ready, start, "bbb"))
+            );
+
+            ready.await(5, TimeUnit.SECONDS);
+            start.countDown();
+
+            List<Integer> statuses = new ArrayList<>();
+            for (Future<Integer> future : futures) {
+                statuses.add(future.get(5, TimeUnit.SECONDS));
+            }
+
+            assertThat(statuses).containsExactlyInAnyOrder(201, 422);
+        } finally {
+            executor.shutdownNow();
+        }
+
+        assertThat(customExtensionRepository.count()).isEqualTo(200);
+    }
+
+    private int requestStatus(CountDownLatch ready, CountDownLatch start, String extension) throws Exception {
+        ready.countDown();
+        start.await();
+        return mockMvc.perform(post("/api/policy/custom-extensions")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"extension":"%s"}
+                                """.formatted(extension)))
+                .andReturn()
+                .getResponse()
+                .getStatus();
     }
 
     private void assertErrorResponse(String extension, int status, String message) throws Exception {
