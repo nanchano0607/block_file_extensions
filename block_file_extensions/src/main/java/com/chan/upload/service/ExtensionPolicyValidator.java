@@ -11,7 +11,9 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 
 @Service
 @RequiredArgsConstructor
@@ -22,8 +24,18 @@ public class ExtensionPolicyValidator {
     private final CustomExtensionRepository customExtensionRepository;
 
     public void validate(List<String> candidates) {
+        if (candidates.isEmpty()) {
+            return;
+        }
+
+        // 후보마다 두 리포지토리를 각각 조회하면 이중/다중 확장자에서 왕복이 후보 수에 비례해 늘어난다.
+        // 정책 대조 전체를 각 저장소당 IN 조회 한 번으로 배치 처리하고, 실제 판정(첫 매칭 후보 선택)은
+        // 원래의 파일명 순서를 그대로 유지한 메모리 내 순회로 수행해 기존 동작을 그대로 보존한다.
+        Set<String> blocked = new HashSet<>(fixedExtensionPolicyRepository.findBlockedExtensionsAmong(candidates));
+        blocked.addAll(customExtensionRepository.findRegisteredExtensionsAmong(candidates));
+
         for (String candidate : candidates) {
-            if (isBlocked(candidate)) {
+            if (blocked.contains(candidate)) {
                 throw new UploadBlockedException(
                         ErrorCode.UPLOAD_FILE_TYPE_NOT_ALLOWED,
                         BlockReasonCategory.EXTENSION_BLOCKED,
@@ -32,10 +44,5 @@ public class ExtensionPolicyValidator {
                 );
             }
         }
-    }
-
-    private boolean isBlocked(String candidate) {
-        return fixedExtensionPolicyRepository.existsByExtensionAndBlockedTrue(candidate)
-                || customExtensionRepository.existsByExtension(candidate);
     }
 }
