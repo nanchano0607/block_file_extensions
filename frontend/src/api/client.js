@@ -1,5 +1,5 @@
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8080'
-export const useMockApi = import.meta.env.VITE_USE_MOCK_API !== 'false'
+const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL || '').replace(/\/$/, '')
+export const useMockApi = import.meta.env.VITE_USE_MOCK_API === 'true'
 
 export async function request(path, options = {}) {
   const response = await fetch(`${API_BASE_URL}${path}`, {

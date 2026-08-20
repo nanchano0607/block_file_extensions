@@ -16,6 +16,11 @@ function candidatesOf(filename) {
   return filename.split('.').map((part) => part.trim().toLowerCase()).filter(Boolean)
 }
 
+function normalizeCustomExtension(value) {
+  const trimmed = value.trim()
+  return (trimmed.startsWith('.') ? trimmed.slice(1) : trimmed).toLowerCase()
+}
+
 function Spinner({ small = false }) {
   return <span className={`spinner${small ? ' spinner--small' : ''}`} aria-hidden="true" />
 }
@@ -29,6 +34,7 @@ function PolicyPanel({ onPolicyChange }) {
   const [adding, setAdding] = useState(false)
   const [deleting, setDeleting] = useState(null)
   const [loadError, setLoadError] = useState('')
+  const [fixedError, setFixedError] = useState('')
   const [formError, setFormError] = useState('')
 
   const load = async () => {
@@ -69,6 +75,7 @@ function PolicyPanel({ onPolicyChange }) {
 
   const toggleFixed = async (item) => {
     const nextBlocked = !item.blocked
+    setFixedError('')
     setSaving(item.extension)
     setFixed((items) => items.map((value) =>
       value.extension === item.extension ? { ...value, blocked: nextBlocked } : value,
@@ -83,7 +90,7 @@ function PolicyPanel({ onPolicyChange }) {
       setFixed((items) => items.map((value) =>
         value.extension === item.extension ? item : value,
       ))
-      setFormError(error.message || '저장에 실패했습니다.')
+      setFixedError(error.message || '저장에 실패했습니다.')
     } finally {
       setSaving(null)
     }
@@ -92,7 +99,7 @@ function PolicyPanel({ onPolicyChange }) {
   const addCustom = async (event) => {
     event.preventDefault()
     setFormError('')
-    const normalized = input.trim().toLowerCase()
+    const normalized = normalizeCustomExtension(input)
     if (!normalized || normalized.length > 20) {
       setFormError('확장자는 1~20자로 입력해주세요.')
       return
@@ -171,13 +178,14 @@ function PolicyPanel({ onPolicyChange }) {
         <div className="fixed-grid">
           {fixed.map((item) => (
             <label className={`check-card${item.blocked ? ' check-card--active' : ''}`} key={item.extension}>
-              <input type="checkbox" checked={item.blocked} disabled={saving === item.extension} onChange={() => toggleFixed(item)} />
+              <input type="checkbox" checked={item.blocked} disabled={saving !== null} onChange={() => toggleFixed(item)} />
               <span className="custom-check">{item.blocked ? '✓' : ''}</span>
               <span>.{item.extension}</span>
               {saving === item.extension && <Spinner small />}
             </label>
           ))}
         </div>
+        {fixedError && <p className="inline-error" role="alert">{fixedError}</p>}
       </div>
 
       <div className="divider" />
@@ -192,10 +200,10 @@ function PolicyPanel({ onPolicyChange }) {
           <div className="input-wrap">
             <span className="input-prefix">.</span>
             <input aria-label="커스텀 확장자" placeholder="확장자 입력" value={input} maxLength={20} disabled={atLimit || adding}
-              onChange={(event) => { setInput(event.target.value); setFormError('') }} />
+              onChange={(event) => { setInput(event.target.value.replace(/^\./, '')); setFormError('') }} />
             <span className="character-count">{input.length}/20</span>
           </div>
-          <button className="button button--primary" disabled={atLimit || adding || !input.trim()}>
+          <button type="submit" className="button button--primary" disabled={atLimit || adding || !input.trim()}>
             {adding ? <><Spinner small /> 추가 중</> : '추가'}
           </button>
         </form>
