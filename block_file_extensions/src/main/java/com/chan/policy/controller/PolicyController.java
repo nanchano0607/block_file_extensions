@@ -1,6 +1,7 @@
 package com.chan.policy.controller;
 
 import com.chan.common.response.ApiResponse;
+import com.chan.policy.dto.CustomExtensionListResponse;
 import com.chan.policy.dto.FixedExtensionResponse;
 import com.chan.policy.dto.UpdateFixedExtensionRequest;
 import com.chan.policy.service.PolicyCommandService;
@@ -30,6 +31,11 @@ public class PolicyController {
     @GetMapping("/fixed-extensions")
     public ApiResponse<List<FixedExtensionResponse>> getFixedExtensions() {
         return ApiResponse.success("조회되었습니다.", policyQueryService.getFixedExtensions());
+    }
+
+    @GetMapping("/custom-extensions")
+    public ApiResponse<CustomExtensionListResponse> getCustomExtensions() {
+        return ApiResponse.success("조회되었습니다.", policyQueryService.getCustomExtensions());
     }
 
     @PatchMapping("/fixed-extensions/{extension}")

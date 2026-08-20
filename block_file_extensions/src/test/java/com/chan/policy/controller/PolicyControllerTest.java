@@ -1,6 +1,8 @@
 package com.chan.policy.controller;
 
 import com.chan.common.exception.BusinessException;
+import com.chan.policy.dto.CustomExtensionItemResponse;
+import com.chan.policy.dto.CustomExtensionListResponse;
 import com.chan.policy.dto.FixedExtensionResponse;
 import com.chan.policy.service.PolicyCommandService;
 import com.chan.policy.service.PolicyQueryService;
@@ -54,6 +56,44 @@ class PolicyControllerTest {
                 .andExpect(jsonPath("$.data[0].blocked").value(false))
                 .andExpect(jsonPath("$.data[4].extension").value("exe"))
                 .andExpect(jsonPath("$.data[4].blocked").value(true));
+    }
+
+    @Test
+    void 커스텀_확장자_목록과_개수와_한도를_조회한다() throws Exception {
+        given(policyQueryService.getCustomExtensions()).willReturn(
+                new CustomExtensionListResponse(
+                        2,
+                        200,
+                        List.of(
+                                new CustomExtensionItemResponse(1L, "sh"),
+                                new CustomExtensionItemResponse(2L, "ps1")
+                        )
+                )
+        );
+
+        mockMvc.perform(get("/api/policy/custom-extensions"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.success").value(true))
+                .andExpect(jsonPath("$.message").value("조회되었습니다."))
+                .andExpect(jsonPath("$.data.count").value(2))
+                .andExpect(jsonPath("$.data.limit").value(200))
+                .andExpect(jsonPath("$.data.items").isArray())
+                .andExpect(jsonPath("$.data.items.length()").value(2))
+                .andExpect(jsonPath("$.data.items[0].id").value(1))
+                .andExpect(jsonPath("$.data.items[0].extension").value("sh"));
+    }
+
+    @Test
+    void 커스텀_확장자가_없으면_빈_목록과_0건을_반환한다() throws Exception {
+        given(policyQueryService.getCustomExtensions()).willReturn(
+                new CustomExtensionListResponse(0, 200, List.of())
+        );
+
+        mockMvc.perform(get("/api/policy/custom-extensions"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.count").value(0))
+                .andExpect(jsonPath("$.data.limit").value(200))
+                .andExpect(jsonPath("$.data.items").isEmpty());
     }
 
     @Test
