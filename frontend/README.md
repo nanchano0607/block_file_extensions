@@ -10,8 +10,11 @@ cp .env.example .env
 npm run dev
 ```
 
-기본값은 백엔드 없이 확인 가능한 목업 API 모드입니다. 정책은 브라우저 `localStorage`에 저장됩니다.
-백엔드 API 구현 후 `.env`의 `VITE_USE_MOCK_API=false`로 변경하면 실제 API를 호출합니다.
+기본값은 실제 백엔드 API 모드입니다. 로컬 개발에서는 Vite가 `/api` 요청을
+`http://localhost:8080`으로 프록시하므로 백엔드를 함께 실행해야 합니다.
+
+백엔드 없이 화면만 확인하려면 `.env`의 `VITE_USE_MOCK_API=true`로 변경합니다.
+목업 정책은 브라우저 `localStorage`에 저장됩니다.
 
 ## 화면
 
