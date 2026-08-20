@@ -14,7 +14,8 @@ public enum ErrorCode {
     ),
     CUSTOM_EXTENSION_NOT_FOUND(HttpStatus.NOT_FOUND, "존재하지 않는 커스텀 확장자입니다."),
     UPLOAD_FILE_SIZE_EXCEEDED(HttpStatus.UNPROCESSABLE_CONTENT, "파일 크기 제한을 초과했습니다."),
-    UPLOAD_FILE_TYPE_NOT_ALLOWED(HttpStatus.UNPROCESSABLE_CONTENT, "허용되지 않는 파일 형식입니다.");
+    UPLOAD_FILE_TYPE_NOT_ALLOWED(HttpStatus.UNPROCESSABLE_CONTENT, "허용되지 않는 파일 형식입니다."),
+    UPLOAD_FILE_PROCESSING_FAILED(HttpStatus.UNPROCESSABLE_CONTENT, "파일을 처리할 수 없습니다.");
 
     private final HttpStatus status;
     private final String message;

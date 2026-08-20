@@ -20,17 +20,20 @@ public class UploadService {
     private final ExtensionPolicyValidator extensionPolicyValidator;
     private final MimeTypeInspector mimeTypeInspector;
     private final MagicNumberInspector magicNumberInspector;
+    private final ParserStructureInspector parserStructureInspector;
 
     public UploadService(
             @Value("${app.upload.max-file-size}") DataSize maxFileSize,
             ExtensionPolicyValidator extensionPolicyValidator,
             MimeTypeInspector mimeTypeInspector,
-            MagicNumberInspector magicNumberInspector
+            MagicNumberInspector magicNumberInspector,
+            ParserStructureInspector parserStructureInspector
     ) {
         this.maxFileSizeBytes = maxFileSize.toBytes();
         this.extensionPolicyValidator = extensionPolicyValidator;
         this.mimeTypeInspector = mimeTypeInspector;
         this.magicNumberInspector = magicNumberInspector;
+        this.parserStructureInspector = parserStructureInspector;
     }
 
     public UploadResponse upload(MultipartFile file) {
@@ -45,6 +48,7 @@ public class UploadService {
         extensionPolicyValidator.validate(extensionCandidates);
         mimeTypeInspector.inspect(file, requestId);
         magicNumberInspector.inspect(file, extensionCandidates, requestId);
+        parserStructureInspector.inspect(file, extensionCandidates, requestId);
 
         return UploadResponse.pending(file.getOriginalFilename(), file.getSize());
     }
