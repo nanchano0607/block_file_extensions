@@ -26,7 +26,6 @@ public class ParserStructureInspector {
         for (String extension : extensionCandidates) {
             if (supports(extension)) {
                 inspect(file, extension, requestId);
-                return;
             }
         }
     }
