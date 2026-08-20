@@ -24,6 +24,11 @@ public enum ErrorCode {
     UPLOAD_FILE_STORAGE_FAILED(
             HttpStatus.INTERNAL_SERVER_ERROR,
             "일시적인 오류가 발생했습니다. 잠시 후 다시 시도해주세요."
+    ),
+    INVALID_REQUEST(HttpStatus.BAD_REQUEST, "요청 형식이 올바르지 않습니다."),
+    INTERNAL_SERVER_ERROR(
+            HttpStatus.INTERNAL_SERVER_ERROR,
+            "일시적인 오류가 발생했습니다. 잠시 후 다시 시도해주세요."
     );
 
     private final HttpStatus status;
