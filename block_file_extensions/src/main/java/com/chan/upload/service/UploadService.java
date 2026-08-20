@@ -81,7 +81,7 @@ public class UploadService {
                     storedFile
             );
             return UploadResponse.success(uploadFileId, originalFilename, file.getSize());
-        } catch (BusinessException exception) {
+        } catch (RuntimeException exception) {
             BlockedContext context = blockedContext(exception);
             recordBlocked(
                     requestId,
@@ -120,11 +120,9 @@ public class UploadService {
             long sizeBytes,
             List<String> extensionCandidates,
             BlockedContext context,
-            BusinessException originalException
+            RuntimeException originalException
     ) {
-        String detail = originalException instanceof UploadBlockedException blockedException
-                ? blockedException.getDetail()
-                : originalException.getErrorCode().name();
+        String detail = detailOf(originalException);
         log.warn(
                 "UPLOAD_BLOCKED requestId={} filename={} category={} detail={}",
                 requestId,
@@ -153,25 +151,29 @@ public class UploadService {
         }
     }
 
-    private BlockedContext blockedContext(BusinessException exception) {
+    private BlockedContext blockedContext(RuntimeException exception) {
         if (exception instanceof UploadBlockedException blockedException) {
             return new BlockedContext(
                     blockedException.getCategory(),
                     blockedException.getMatchedExtension()
             );
         }
-        return new BlockedContext(categoryOf(exception.getErrorCode()), null);
+        // Every throw site in this pipeline uses UploadBlockedException, which self-reports
+        // its category. Any other exception (a plain BusinessException, an unexpected DB
+        // error, ...) isn't tied to a specific validation stage, so rather than maintaining
+        // a second ErrorCode -> category mapping that can drift out of sync, it falls into
+        // a single generic "unknown" category.
+        return new BlockedContext(BlockReasonCategory.UNKNOWN_ERROR, null);
     }
 
-    private BlockReasonCategory categoryOf(ErrorCode errorCode) {
-        return switch (errorCode) {
-            case UPLOAD_FILE_SIZE_EXCEEDED -> BlockReasonCategory.SIZE_EXCEEDED;
-            case UPLOAD_FILE_PROCESSING_FAILED -> BlockReasonCategory.PARSER_STRUCTURE_INVALID;
-            case MALWARE_DETECTED -> BlockReasonCategory.MALWARE_DETECTED;
-            case MALWARE_SCAN_FAILED -> BlockReasonCategory.MALWARE_SCAN_FAILED;
-            case UPLOAD_FILE_STORAGE_FAILED -> BlockReasonCategory.STORAGE_FAILED;
-            default -> BlockReasonCategory.EXTENSION_BLOCKED;
-        };
+    private String detailOf(RuntimeException exception) {
+        if (exception instanceof UploadBlockedException blockedException) {
+            return blockedException.getDetail();
+        }
+        if (exception instanceof BusinessException businessException) {
+            return businessException.getErrorCode().name();
+        }
+        return exception.getClass().getSimpleName() + ": " + exception.getMessage();
     }
 
     private String originalFilename(MultipartFile file) {
