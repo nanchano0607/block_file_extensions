@@ -2,21 +2,27 @@ package com.chan.upload.controller;
 
 import com.chan.upload.service.UploadService;
 import com.chan.upload.service.ExtensionPolicyValidator;
+import com.chan.upload.service.MimeTypeInspector;
 
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.test.system.CapturedOutput;
+import org.springframework.boot.test.system.OutputCaptureExtension;
 import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
 import org.springframework.context.annotation.Import;
 import org.springframework.mock.web.MockMultipartFile;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.multipart;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 @WebMvcTest(UploadController.class)
-@Import(UploadService.class)
+@Import({UploadService.class, MimeTypeInspector.class})
+@ExtendWith(OutputCaptureExtension.class)
 class UploadControllerTest {
 
     private static final int MEBIBYTE = 1024 * 1024;
@@ -91,6 +97,26 @@ class UploadControllerTest {
                 .andExpect(jsonPath("$.success").value(false))
                 .andExpect(jsonPath("$.message").value("허용되지 않는 파일 형식입니다."))
                 .andExpect(jsonPath("$.data").doesNotExist());
+    }
+
+    @Test
+    void 요청_MIME과_Tika_감지값이_달라도_WARN만_남기고_통과한다(CapturedOutput output) throws Exception {
+        MockMultipartFile file = new MockMultipartFile(
+                "file",
+                "plain.txt",
+                "application/pdf",
+                "plain text content".getBytes()
+        );
+
+        mockMvc.perform(multipart("/api/upload").file(file))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.success").value(true));
+
+        assertThat(output)
+                .contains("MIME_MISMATCH")
+                .contains("filename=plain.txt")
+                .contains("requestedMime=application/pdf")
+                .contains("detectedMime=text/plain");
     }
 
     @Test

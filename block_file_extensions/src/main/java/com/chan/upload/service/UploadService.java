@@ -10,21 +10,28 @@ import org.springframework.stereotype.Service;
 import org.springframework.util.unit.DataSize;
 import org.springframework.web.multipart.MultipartFile;
 
+import java.util.UUID;
+
 @Service
 public class UploadService {
 
     private final long maxFileSizeBytes;
     private final ExtensionPolicyValidator extensionPolicyValidator;
+    private final MimeTypeInspector mimeTypeInspector;
 
     public UploadService(
             @Value("${app.upload.max-file-size}") DataSize maxFileSize,
-            ExtensionPolicyValidator extensionPolicyValidator
+            ExtensionPolicyValidator extensionPolicyValidator,
+            MimeTypeInspector mimeTypeInspector
     ) {
         this.maxFileSizeBytes = maxFileSize.toBytes();
         this.extensionPolicyValidator = extensionPolicyValidator;
+        this.mimeTypeInspector = mimeTypeInspector;
     }
 
     public UploadResponse upload(MultipartFile file) {
+        String requestId = UUID.randomUUID().toString();
+
         if (file.getSize() > maxFileSizeBytes) {
             throw new BusinessException(ErrorCode.UPLOAD_FILE_SIZE_EXCEEDED);
         }
@@ -32,6 +39,7 @@ public class UploadService {
         extensionPolicyValidator.validate(
                 ExtensionCandidateExtractor.extract(file.getOriginalFilename())
         );
+        mimeTypeInspector.inspect(file, requestId);
 
         return UploadResponse.pending(file.getOriginalFilename(), file.getSize());
     }
