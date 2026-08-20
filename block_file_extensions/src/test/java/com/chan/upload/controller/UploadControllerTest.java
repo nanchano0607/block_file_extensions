@@ -17,6 +17,8 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 @Import(UploadService.class)
 class UploadControllerTest {
 
+    private static final int MEBIBYTE = 1024 * 1024;
+
     @Autowired
     MockMvc mockMvc;
 
@@ -52,5 +54,51 @@ class UploadControllerTest {
                 .andExpect(jsonPath("$.success").value(true))
                 .andExpect(jsonPath("$.data.originalFilename").value("sample.exe"))
                 .andExpect(jsonPath("$.data.sizeBytes").value(2));
+    }
+
+    @Test
+    void 제한보다_작은_9MB_파일은_크기_검사를_통과한다() throws Exception {
+        MockMultipartFile file = new MockMultipartFile(
+                "file",
+                "nine-megabytes.bin",
+                "application/octet-stream",
+                new byte[9 * MEBIBYTE]
+        );
+
+        mockMvc.perform(multipart("/api/upload").file(file))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.success").value(true))
+                .andExpect(jsonPath("$.data.sizeBytes").value(9L * MEBIBYTE));
+    }
+
+    @Test
+    void 제한과_같은_10MB_파일은_크기_검사를_통과한다() throws Exception {
+        MockMultipartFile file = new MockMultipartFile(
+                "file",
+                "ten-megabytes.bin",
+                "application/octet-stream",
+                new byte[10 * MEBIBYTE]
+        );
+
+        mockMvc.perform(multipart("/api/upload").file(file))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.success").value(true))
+                .andExpect(jsonPath("$.data.sizeBytes").value(10L * MEBIBYTE));
+    }
+
+    @Test
+    void 제한보다_큰_11MB_파일은_422로_차단한다() throws Exception {
+        MockMultipartFile file = new MockMultipartFile(
+                "file",
+                "eleven-megabytes.bin",
+                "application/octet-stream",
+                new byte[11 * MEBIBYTE]
+        );
+
+        mockMvc.perform(multipart("/api/upload").file(file))
+                .andExpect(status().isUnprocessableContent())
+                .andExpect(jsonPath("$.success").value(false))
+                .andExpect(jsonPath("$.message").value("파일 크기 제한을 초과했습니다."))
+                .andExpect(jsonPath("$.data").doesNotExist());
     }
 }
