@@ -66,8 +66,38 @@ class ClamAvScannerTest {
         assertErrorCode(scanner(unavailablePort, 100), ErrorCode.MALWARE_SCAN_FAILED);
     }
 
+    @Test
+    void clamd가_연결만_받고_읽지_않으면_쓰기_타임아웃으로_안전하게_업로드를_중단한다() throws Exception {
+        try (ServerSocket serverSocket = new ServerSocket(0)) {
+            int port = serverSocket.getLocalPort();
+            // clamd가 커넥션은 받았지만 응답 없이 멈춘 상황(과부하 등)을 재현: 소켓을 절대 읽지 않는다.
+            CompletableFuture<Void> stalledServer = CompletableFuture.runAsync(() -> {
+                try (Socket ignored = serverSocket.accept()) {
+                    Thread.sleep(2_000);
+                } catch (Exception ignored) {
+                    // 테스트 종료 시 서버소켓이 닫히며 발생하는 예외는 무시한다.
+                }
+            });
+
+            ClamAvScanner scanner = scanner(port, 200);
+            // 소켓 송신/수신 버퍼를 확실히 넘겨 write()가 실제로 블로킹되도록 충분히 큰 페이로드를 사용한다.
+            byte[] largePayload = new byte[8 * 1024 * 1024];
+
+            long start = System.currentTimeMillis();
+            assertErrorCode(scanner, ErrorCode.MALWARE_SCAN_FAILED, largePayload);
+            long elapsedMillis = System.currentTimeMillis() - start;
+
+            assertThat(elapsedMillis).isLessThan(2_000);
+            stalledServer.cancel(true);
+        }
+    }
+
     private void assertErrorCode(ClamAvScanner scanner, ErrorCode expected) {
-        assertThatThrownBy(() -> scanner.scan(file("content".getBytes(StandardCharsets.UTF_8)), REQUEST_ID))
+        assertErrorCode(scanner, expected, "content".getBytes(StandardCharsets.UTF_8));
+    }
+
+    private void assertErrorCode(ClamAvScanner scanner, ErrorCode expected, byte[] content) {
+        assertThatThrownBy(() -> scanner.scan(file(content), REQUEST_ID))
                 .isInstanceOf(BusinessException.class)
                 .extracting(exception -> ((BusinessException) exception).getErrorCode())
                 .isEqualTo(expected);

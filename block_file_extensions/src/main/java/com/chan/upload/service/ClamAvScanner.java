@@ -11,6 +11,7 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.web.multipart.MultipartFile;
 
+import java.io.BufferedInputStream;
 import java.io.ByteArrayOutputStream;
 import java.io.DataOutputStream;
 import java.io.IOException;
@@ -18,6 +19,10 @@ import java.io.InputStream;
 import java.net.InetSocketAddress;
 import java.net.Socket;
 import java.nio.charset.StandardCharsets;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 
 @Service
 public class ClamAvScanner {
@@ -47,7 +52,7 @@ public class ClamAvScanner {
             socket.setSoTimeout(timeoutMillis);
 
             try (InputStream fileInputStream = file.getInputStream()) {
-                sendFile(socket, fileInputStream);
+                sendFileWithTimeout(socket, fileInputStream);
             }
 
             handleResponse(readResponse(socket), file, requestId);
@@ -70,6 +75,38 @@ public class ClamAvScanner {
         }
     }
 
+    private void sendFileWithTimeout(Socket socket, InputStream inputStream) throws IOException {
+        // Socket#setSoTimeout only bounds blocking reads, not writes: if clamd stops
+        // draining the socket mid-transfer, outputStream.write() can block forever.
+        // Running the write on its own thread lets us enforce a real deadline by
+        // closing the socket, which unblocks the write with an IOException.
+        CompletableFuture<Void> sendCompleted = new CompletableFuture<>();
+        Thread.ofVirtual().start(() -> {
+            try {
+                sendFile(socket, inputStream);
+                sendCompleted.complete(null);
+            } catch (Exception exception) {
+                sendCompleted.completeExceptionally(exception);
+            }
+        });
+
+        try {
+            sendCompleted.get(timeoutMillis, TimeUnit.MILLISECONDS);
+        } catch (TimeoutException exception) {
+            socket.close();
+            throw new IOException("Timed out writing file to ClamAV", exception);
+        } catch (ExecutionException exception) {
+            Throwable cause = exception.getCause();
+            if (cause instanceof IOException ioException) {
+                throw ioException;
+            }
+            throw new IOException("Failed to write file to ClamAV", cause);
+        } catch (InterruptedException exception) {
+            Thread.currentThread().interrupt();
+            throw new IOException("Interrupted while writing file to ClamAV", exception);
+        }
+    }
+
     private void sendFile(Socket socket, InputStream inputStream) throws IOException {
         DataOutputStream outputStream = new DataOutputStream(socket.getOutputStream());
         outputStream.write(INSTREAM_COMMAND);
@@ -86,7 +123,7 @@ public class ClamAvScanner {
     }
 
     private String readResponse(Socket socket) throws IOException {
-        InputStream inputStream = socket.getInputStream();
+        InputStream inputStream = new BufferedInputStream(socket.getInputStream());
         ByteArrayOutputStream response = new ByteArrayOutputStream();
 
         while (response.size() < MAX_RESPONSE_SIZE) {
