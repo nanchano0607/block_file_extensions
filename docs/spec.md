@@ -98,7 +98,7 @@ CREATE TABLE custom_extension (
 | `matched_extension` | `VARCHAR(20)` | NULL 허용 | 위 후보들 중 **정책과 실제로 매칭되어 차단을 유발한 확장자 1개**. 여러 후보가 동시에 매칭되어도 최초로 매칭된 값 하나만 저장. 차단되지 않은 요청은 NULL (내부 감사/로그 전용 컬럼이며, **사용자 응답에는 절대 노출하지 않는다** — F2-2/F2-3의 메시지 노출 원칙 참고) |
 | `size_bytes` | `BIGINT` | NOT NULL | 업로드 시도 파일 크기 |
 | `status` | `VARCHAR(20)` | NOT NULL | `SUCCESS` / `BLOCKED` |
-| `block_reason_category` | `VARCHAR(50)` | NULL 허용 | 차단된 경우의 **일반화된 카테고리**만 저장 (예: `SIZE_EXCEEDED`, `EXTENSION_BLOCKED`, `MALWARE_DETECTED` 등). 세부 판단 근거(어떤 시그니처 불일치 등)는 별도 애플리케이션 로그에만 남기고 이 테이블에는 남기지 않는다 (DB가 유출되어도 검증 로직 세부가 노출되지 않도록) |
+| `block_reason_category` | `VARCHAR(50)` | NULL 허용 | 차단된 경우의 **일반화된 카테고리**만 저장. 전체 값: `SIZE_EXCEEDED`(0단계 크기 초과), `EXTENSION_BLOCKED`(1단계 확장자 정책 위반), `MAGIC_NUMBER_BLOCKED`(3단계 매직넘버 불일치), `PARSER_STRUCTURE_INVALID`(4단계 구조 손상), `MALWARE_DETECTED`(5단계 악성코드 탐지), `MALWARE_SCAN_FAILED`(5단계 스캔 자체 실패/타임아웃), `STORAGE_FAILED`(저장 단계 실패), `UNKNOWN_ERROR`(위 어느 단계에도 속하지 않는 예기치 못한 오류). 세부 판단 근거(어떤 시그니처 불일치 등)는 별도 애플리케이션 로그에만 남기고 이 테이블에는 남기지 않는다 (DB가 유출되어도 검증 로직 세부가 노출되지 않도록) |
 | `created_at` | `DATETIME` | NOT NULL, DEFAULT CURRENT_TIMESTAMP | |
 
 ```sql
@@ -155,6 +155,10 @@ CREATE TABLE extension_policy_history (
 - 실패: `success: false`, `message`에 **일반화된 사유(F2-2 "사용자 노출 메시지" 수준)**, `data`는 `null`
 - HTTP 상태 코드와 함께 사용 (2xx/4xx/5xx는 아래 각 API 별 표기)
 
+**모든 API 공통 폴백 (구현 단계에서 추가 확정)**
+- 요청 바디 검증 실패(`@NotNull` 등) 또는 경로 변수 타입 불일치(예: `DELETE /api/policy/custom-extensions/abc`처럼 `{id}`에 숫자가 아닌 값)는 엔드포인트별 검증 목록에 없더라도 `400`, `"요청 형식이 올바르지 않습니다."`로 통일 응답한다.
+- 그 외 예상하지 못한 서버 오류(DB 오류 포함)는 어떤 API든 `500`, `"일시적인 오류가 발생했습니다. 잠시 후 다시 시도해주세요."`로 응답한다. 아래 각 API 설명의 "500"은 이 공통 폴백을 가리키며 별도 표기하지 않는다.
+
 ### 3-2. 정책 관리 API
 
 #### `GET /api/policy/fixed-extensions`
@@ -180,7 +184,7 @@ CREATE TABLE extension_policy_history (
 { "blocked": true }
 ```
 - `{extension}`이 사전 정의된 7개 값이 아니면 `404`
-- 성공 시 `200`, 실패(DB 오류 등) 시 `500`
+- 성공 시 `200` (그 외 실패는 3-1의 공통 폴백 참고)
 
 #### `GET /api/policy/custom-extensions`
 커스텀 확장자 목록 + 개수 조회 (F1-3)
@@ -303,6 +307,15 @@ CREATE TABLE extension_policy_history (
 - Spring 애플리케이션에서 `INSTREAM` 프로토콜로 파일 스트림을 clamd에 전달해 스캔 (예: `fscan`/`clamav-client` 계열 라이브러리 또는 직접 소켓 통신 구현)
 - 스캔 결과 `FOUND`(감염) 시 즉시 차단, `OK`(정상) 시 통과
 - 타임아웃 설정 필요(예: 10초) — 응답 없음도 하나의 실패 케이스로 간주해 차단 처리(가용성보다 안전 우선)
+
+**`FOUND`(탐지)와 스캔 자체 실패(연결 불가/타임아웃)는 HTTP 상태와 카테고리가 다르다** — 둘 다 "차단 처리"라는 결과는 같지만 원인이 다르므로 구분한다.
+
+| 상황 | HTTP | `block_reason_category` | 메시지 |
+|---|---|---|---|
+| `FOUND` (실제 악성코드 탐지) | `422` | `MALWARE_DETECTED` | "악성코드가 탐지되었습니다." |
+| 연결 실패 / 타임아웃 / 비정상 응답 (스캔 자체를 완료하지 못함) | `500` | `MALWARE_SCAN_FAILED` | "일시적인 오류가 발생했습니다. 잠시 후 다시 시도해주세요." |
+
+전자는 "요청은 정상 처리했으나 내용이 위험해 정책상 거부"(3-1 공통 규격의 4xx 원칙)이고, 후자는 클라이언트 잘못이 아닌 서버/인프라 문제이므로 5xx로 분리한다.
 
 ---
 
