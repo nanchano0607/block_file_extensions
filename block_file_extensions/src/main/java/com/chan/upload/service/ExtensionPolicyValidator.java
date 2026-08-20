@@ -1,7 +1,8 @@
 package com.chan.upload.service;
 
-import com.chan.common.exception.BusinessException;
+import com.chan.common.exception.BlockReasonCategory;
 import com.chan.common.exception.ErrorCode;
+import com.chan.common.exception.UploadBlockedException;
 import com.chan.policy.repository.CustomExtensionRepository;
 import com.chan.policy.repository.FixedExtensionPolicyRepository;
 
@@ -23,7 +24,12 @@ public class ExtensionPolicyValidator {
     public void validate(List<String> candidates) {
         for (String candidate : candidates) {
             if (isBlocked(candidate)) {
-                throw new BusinessException(ErrorCode.UPLOAD_FILE_TYPE_NOT_ALLOWED);
+                throw new UploadBlockedException(
+                        ErrorCode.UPLOAD_FILE_TYPE_NOT_ALLOWED,
+                        BlockReasonCategory.EXTENSION_BLOCKED,
+                        "extension matched the active policy",
+                        candidate
+                );
             }
         }
     }

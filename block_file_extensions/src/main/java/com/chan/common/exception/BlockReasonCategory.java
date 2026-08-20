@@ -1,0 +1,11 @@
+package com.chan.common.exception;
+
+public enum BlockReasonCategory {
+    SIZE_EXCEEDED,
+    EXTENSION_BLOCKED,
+    MAGIC_NUMBER_BLOCKED,
+    PARSER_STRUCTURE_INVALID,
+    MALWARE_DETECTED,
+    MALWARE_SCAN_FAILED,
+    STORAGE_FAILED
+}

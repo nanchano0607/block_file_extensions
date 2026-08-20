@@ -1,7 +1,8 @@
 package com.chan.upload.service;
 
-import com.chan.common.exception.BusinessException;
+import com.chan.common.exception.BlockReasonCategory;
 import com.chan.common.exception.ErrorCode;
+import com.chan.common.exception.UploadBlockedException;
 import com.chan.upload.domain.FileSignature;
 
 import org.slf4j.Logger;
@@ -32,7 +33,11 @@ public class MagicNumberInspector {
                     file.getOriginalFilename(),
                     exception
             );
-            throw new BusinessException(ErrorCode.UPLOAD_FILE_TYPE_NOT_ALLOWED);
+            throw new UploadBlockedException(
+                    ErrorCode.UPLOAD_FILE_TYPE_NOT_ALLOWED,
+                    BlockReasonCategory.MAGIC_NUMBER_BLOCKED,
+                    "file header could not be read"
+            );
         }
     }
 
@@ -43,6 +48,10 @@ public class MagicNumberInspector {
                 file.getOriginalFilename(),
                 signature
         );
-        throw new BusinessException(ErrorCode.UPLOAD_FILE_TYPE_NOT_ALLOWED);
+        throw new UploadBlockedException(
+                ErrorCode.UPLOAD_FILE_TYPE_NOT_ALLOWED,
+                BlockReasonCategory.MAGIC_NUMBER_BLOCKED,
+                "detected signature=" + signature
+        );
     }
 }

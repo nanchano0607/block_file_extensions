@@ -6,7 +6,7 @@ public record UploadResponse(
         long sizeBytes
 ) {
 
-    public static UploadResponse pending(String originalFilename, long sizeBytes) {
-        return new UploadResponse(null, originalFilename, sizeBytes);
+    public static UploadResponse success(Long id, String originalFilename, long sizeBytes) {
+        return new UploadResponse(id, originalFilename, sizeBytes);
     }
 }

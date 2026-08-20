@@ -1,15 +1,22 @@
 package com.chan.upload.controller;
 
+import com.chan.common.exception.BusinessException;
+import com.chan.common.exception.ErrorCode;
+import com.chan.upload.service.ClamAvScanner;
+import com.chan.upload.service.FileStorageService;
 import com.chan.upload.service.UploadService;
+import com.chan.upload.service.UploadFileRecordService;
 import com.chan.upload.service.ExtensionPolicyValidator;
 import com.chan.upload.service.MagicNumberInspector;
 import com.chan.upload.service.MimeTypeInspector;
 import com.chan.upload.service.ParserStructureInspector;
+import com.chan.upload.service.StoredFile;
 
 import org.apache.poi.xslf.usermodel.XMLSlideShow;
 import org.apache.poi.xssf.usermodel.XSSFWorkbook;
 import org.apache.poi.xwpf.usermodel.XWPFDocument;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.Arguments;
@@ -28,9 +35,16 @@ import java.awt.image.BufferedImage;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.UncheckedIOException;
+import java.nio.file.Path;
 import java.util.stream.Stream;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyList;
+import static org.mockito.ArgumentMatchers.anyLong;
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.BDDMockito.given;
+import static org.mockito.BDDMockito.willThrow;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.multipart;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
@@ -53,6 +67,23 @@ class UploadControllerTest {
     @MockitoBean
     ExtensionPolicyValidator extensionPolicyValidator;
 
+    @MockitoBean
+    ClamAvScanner clamAvScanner;
+
+    @MockitoBean
+    FileStorageService fileStorageService;
+
+    @MockitoBean
+    UploadFileRecordService uploadFileRecordService;
+
+    @BeforeEach
+    void setUpStorage() {
+        given(fileStorageService.store(any()))
+                .willReturn(new StoredFile("stored-uuid", Path.of("stored-uuid")));
+        given(uploadFileRecordService.recordSuccess(anyString(), anyString(), anyLong(), anyList()))
+                .willReturn(1L);
+    }
+
     @Test
     void multipart_파일을_받아_성공_응답을_반환한다() throws Exception {
         MockMultipartFile file = new MockMultipartFile(
@@ -66,7 +97,7 @@ class UploadControllerTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.success").value(true))
                 .andExpect(jsonPath("$.message").value("업로드에 성공했습니다."))
-                .andExpect(jsonPath("$.data.id").doesNotExist())
+                .andExpect(jsonPath("$.data.id").value(1))
                 .andExpect(jsonPath("$.data.originalFilename").value("x.txt"))
                 .andExpect(jsonPath("$.data.sizeBytes").value(5));
     }
@@ -282,6 +313,43 @@ class UploadControllerTest {
                 .contains("filename=plain.txt")
                 .contains("requestedMime=application/pdf")
                 .contains("detectedMime=text/plain");
+    }
+
+    @Test
+    void ClamAV가_악성코드를_탐지하면_422로_차단한다() throws Exception {
+        willThrow(new BusinessException(ErrorCode.MALWARE_DETECTED))
+                .given(clamAvScanner)
+                .scan(any(), anyString());
+
+        mockMvc.perform(multipart("/api/upload").file(new MockMultipartFile(
+                        "file",
+                        "eicar.txt",
+                        "text/plain",
+                        "test content".getBytes()
+                )))
+                .andExpect(status().isUnprocessableContent())
+                .andExpect(jsonPath("$.success").value(false))
+                .andExpect(jsonPath("$.message").value("악성코드가 탐지되었습니다."))
+                .andExpect(jsonPath("$.data").doesNotExist());
+    }
+
+    @Test
+    void ClamAV_검사에_실패하면_500으로_업로드를_중단한다() throws Exception {
+        willThrow(new BusinessException(ErrorCode.MALWARE_SCAN_FAILED))
+                .given(clamAvScanner)
+                .scan(any(), anyString());
+
+        mockMvc.perform(multipart("/api/upload").file(new MockMultipartFile(
+                        "file",
+                        "normal.txt",
+                        "text/plain",
+                        "normal content".getBytes()
+                )))
+                .andExpect(status().isInternalServerError())
+                .andExpect(jsonPath("$.success").value(false))
+                .andExpect(jsonPath("$.message")
+                        .value("일시적인 오류가 발생했습니다. 잠시 후 다시 시도해주세요."))
+                .andExpect(jsonPath("$.data").doesNotExist());
     }
 
     @Test

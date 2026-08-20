@@ -253,8 +253,9 @@ CREATE TABLE extension_policy_history (
 ## 4. 검증 규칙 상세 (F2-2 6단계 구현 로직)
 
 ### 4-0. 파일 크기 검사
-- 기준: **10MB (10 * 1024 * 1024 bytes)**
-- Spring 설정: `spring.servlet.multipart.max-file-size=10MB`, `max-request-size=10MB`로 1차 방어(설정 초과 시 Spring이 자체적으로 예외 발생) + 컨트롤러/서비스 레벨에서 실제 바이트 수 재확인(설정 우회 대비 이중 검증)
+- 업무 차단 기준: **10MB (10 * 1024 * 1024 bytes)**
+- 서비스에서 실제 바이트 수를 검사하고, 초과 요청을 `upload_file`에 `SIZE_EXCEEDED`로 기록한 뒤 차단한다.
+- Spring multipart 보호 상한은 파일 11MB, 요청 12MB로 업무 기준보다 조금 높게 둔다. 둘을 모두 10MB로 두면 Spring이 서비스 진입 전에 요청을 거절해 차단 이력을 기록할 수 없기 때문이다. 보호 상한까지 초과한 비정상 대용량 요청은 자원 보호를 우선해 Spring이 먼저 거절한다.
 
 ### 4-1. 확장자 판별 알고리즘 (function.md F2-2 규칙 그대로 구현)
 1. 파일명에 `.`이 하나도 없으면 → 확장자 없는 파일로 즉시 차단

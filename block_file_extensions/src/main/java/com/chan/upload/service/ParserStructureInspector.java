@@ -1,7 +1,8 @@
 package com.chan.upload.service;
 
-import com.chan.common.exception.BusinessException;
+import com.chan.common.exception.BlockReasonCategory;
 import com.chan.common.exception.ErrorCode;
+import com.chan.common.exception.UploadBlockedException;
 
 import org.apache.poi.xslf.usermodel.XMLSlideShow;
 import org.apache.poi.xssf.usermodel.XSSFWorkbook;
@@ -54,7 +55,11 @@ public class ParserStructureInspector {
                     extension,
                     exception
             );
-            throw new BusinessException(ErrorCode.UPLOAD_FILE_PROCESSING_FAILED);
+            throw new UploadBlockedException(
+                    ErrorCode.UPLOAD_FILE_PROCESSING_FAILED,
+                    BlockReasonCategory.PARSER_STRUCTURE_INVALID,
+                    "parserType=" + extension + ", cause=" + exception.getClass().getSimpleName()
+            );
         }
     }
 
