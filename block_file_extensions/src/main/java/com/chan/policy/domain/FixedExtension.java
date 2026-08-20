@@ -1,5 +1,8 @@
 package com.chan.policy.domain;
 
+import com.chan.common.exception.BusinessException;
+import com.chan.common.exception.ErrorCode;
+
 import java.util.Arrays;
 import java.util.Locale;
 
@@ -24,13 +27,13 @@ public enum FixedExtension {
 
     public static FixedExtension from(String value) {
         if (value == null) {
-            throw new IllegalArgumentException("고정 확장자는 null일 수 없습니다.");
+            throw new BusinessException(ErrorCode.FIXED_EXTENSION_NOT_FOUND);
         }
 
         String normalized = value.trim().toLowerCase(Locale.ROOT);
         return Arrays.stream(values())
                 .filter(extension -> extension.value.equals(normalized))
                 .findFirst()
-                .orElseThrow(() -> new IllegalArgumentException("정의되지 않은 고정 확장자입니다: " + value));
+                .orElseThrow(() -> new BusinessException(ErrorCode.FIXED_EXTENSION_NOT_FOUND));
     }
 }
