@@ -4,6 +4,8 @@ import com.chan.common.exception.BlockReasonCategory;
 import com.chan.common.exception.ErrorCode;
 import com.chan.common.exception.UploadBlockedException;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.web.multipart.MultipartFile;
@@ -18,6 +20,7 @@ import java.util.UUID;
 @Service
 public class FileStorageService {
 
+    private static final Logger log = LoggerFactory.getLogger(FileStorageService.class);
     private static final String OWNER_READ_WRITE_ONLY = "rw-------";
 
     private final Path uploadDirectory;
@@ -53,8 +56,10 @@ public class FileStorageService {
     public void deleteQuietly(Path path) {
         try {
             Files.deleteIfExists(path);
-        } catch (IOException ignored) {
-            // The original storage or database exception remains the primary failure.
+        } catch (IOException exception) {
+            // The original storage or database exception remains the primary failure,
+            // but a failed cleanup leaves an orphaned file on disk and must not go unnoticed.
+            log.error("UPLOAD_FILE_CLEANUP_FAILED path={}", path, exception);
         }
     }
 }
