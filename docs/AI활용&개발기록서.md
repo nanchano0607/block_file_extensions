@@ -3,7 +3,7 @@
 ## 4-1. 프롬프트 / 입력 기록 (일자 및 시간순)
 
 > 도구: Claude (claude.ai) — 문서 설계 단계(general/function/spec/design 4종 세트 작성)에서 사용, 코드리뷰 및 리뷰사항 수정에 사용.<br>
-> 도구: Codex — 개발 계획 점검과 Phase 1·2 백엔드/프론트엔드 코드·테스트 구현에서 사용.
+> 도구: Codex — 개발 계획 점검, Phase 1·2 백엔드/프론트엔드 구현, Phase 5 정책 변경 이력·동시성 제어 코드·테스트 구현에서 사용.
 
 
 | 일자 / 시간 | 단계 | 입력한 프롬프트 (핵심 내용) | 의도 및 재질문 과정 |
@@ -44,6 +44,7 @@
 | 2026.08.20 (16:21~16:30) | 우선순위 상위 5건 수정 지시 | `"1~5부터 수정"` | **[의도]** 11건 중 correctness 등급이 높은 상위 5건부터 먼저 처리하도록 범위를 제한 — 한 번에 전부 고치지 않고 검증 가능한 단위로 끊어서 승인.<br>**[결과]** 각 항목마다 실패하는 테스트를 먼저 작성해 실제 버그를 재현(Red)한 뒤 수정(Green): `GlobalExceptionHandler` 폴백 핸들러 추가, `ParserStructureInspector`가 지원되는 모든 확장자 후보를 검사하도록 수정, `UploadService.upload()`의 catch 범위를 `BusinessException`→`RuntimeException`으로 넓혀 DB 예외도 차단 기록을 남기도록 수정, `FileStorageService.deleteQuietly()`에 로그 추가, `ClamAvScanner` 소켓 쓰기에 가상 스레드+타임아웃 적용. 105개 테스트 clean build로 회귀 없음 확인. |
 | 2026.08.20 (17:03~17:09) | 나머지 findings 이어서 수정 | `"이어서 진행"` | **[의도]** 남은 6건(200개 한도 동시성 레이스, MIME 감지 중 RuntimeException 미처리, 죽은 코드였던 카테고리 폴백 switch, `DataIntegrityViolationException` 과잉 매핑, ClamAV 응답 바이트 단위 읽기, 확장자 후보별 N+1성 쿼리)도 계속 수정하도록 승인.<br>**[결과]** 200개 한도 동시성 수정 과정에서, **AI가 처음에 `synchronized`만 걸었으나 직접 작성한 동시성 통합 테스트(두 요청을 `CountDownLatch`로 동시에 발사)가 여전히 `[201, 201]`로 실패하는 것을 발견** — `@Transactional`의 커밋이 메서드 종료(=락 해제) 이후에 일어나 락이 레이스를 막지 못한다는 원인을 스스로 진단하고 `TransactionTemplate`으로 락 안에서 커밋까지 마치도록 재수정함. 나머지 5건도 각각 실패 테스트로 재현 후 수정(리포지토리 반환 타입을 엔티티 대신 확장자 문자열 목록으로 단순화, 배치 `IN` 쿼리 도입 등). 전체 116개 테스트 clean build 통과. |
 | 2026.08.21 (00:20~00:40) | Phase 2 프론트엔드 실제 API 연결 | `"design.md, spec.md파일 다시 읽어보고, 지금 구현단계 phase1까지는 프론트에 반영되어 있어서. phase2부분 연결해줘. 목데이터 지우고"` | **[의도]** 브라우저 `localStorage` 목 정책과 목 업로드를 제거하고, `design.md` 상태표와 `spec.md` 공통 응답 규격을 실제 Phase 2 API에 연결.<br>**[결과]** `POST /api/upload`에 multipart `file`을 전송하고 `success/message/data`를 처리하도록 구현. `VITE_USE_MOCK_API`, 인위적 대기, `localStorage` 정책·업로드 분기를 제거함. 10MB 초과, 확장자 경고, 업로드 중, 성공, 4xx 차단, 5xx/네트워크 오류 및 재시도를 분리. lint/build와 Vite 프록시 정책 조회, 정상 파일 `200`, 확장자 없는 파일 `422`를 실제 백엔드·MySQL·ClamAV로 검증함. |
+| 2026.08.21 (09:35~09:43) | Phase 5 정책 등록 동시성 제어 개선 | `"비관적락 방식으로 바꿔줘"` | **[의도]** 기존 `synchronized + TransactionTemplate` 락방식을 확인한 뒤, JVM 단위 락에 머물지 않고 동일 DB를 사용하는 여러 서버 인스턴스에서도 200개 한도를 보장하도록 **DB 비관적 쓰기 락으로의 전환을 사용자가 직접 지시**.<br>**[결과]** AI가 빈 `custom_extension` 테이블은 잠글 행이 없어 안전한 락 대상이 아님을 설명하고, Flyway V3에 전용 `policy_write_lock` 테이블과 `CUSTOM_EXTENSION_LIMIT` 단일 행을 추가. Repository에 `@Lock(PESSIMISTIC_WRITE)`를 적용해 실제 `SELECT ... FOR UPDATE`가 실행되도록 하고, 등록 메서드를 `락 획득 → 중복 검사 → count 검사 → insert → commit`의 하나의 `@Transactional` 범위로 재구성. 199개 상태에서 두 요청을 동시 실행한 통합 테스트가 `201/422`, 최종 200개로 통과했고 전체 123개 테스트에서 실패 0건을 확인함. |
 
 ---
 
@@ -53,12 +54,12 @@
 | :--- | :--- | :--- |
 | 문서 설계 전 과정 | Claude (claude.ai, 파일 생성 기능) | general.md / function.md 작성 및 반복 수정, .md 파일 생성·수정·파일 공유 |
 | 초기 세팅 점검 및 실행 | Claude Code (CLI) | 리포지토리 파일시스템 직접 조사로 문서-실제 상태 gap 확인, Flyway `V1__init.sql` 작성, git 초기화·원격 연결·커밋/푸시 진행 |
-| 개발 계획·Phase 1·2 구현 | Codex (코딩 에이전트) | 설계 문서와 실제 소스를 교차 점검하고 작업을 검증 가능한 단계로 분해. 정책 CRUD, 업로드 6단계 검증, 파일 저장·감사 이력 코드와 테스트 작성, 빌드 실행, 실패 원인 분석과 리팩터링에 사용 |
+| 개발 계획·Phase 1·2·5 구현 | Codex (코딩 에이전트) | 설계 문서와 실제 소스를 교차 점검하고 작업을 검증 가능한 단계로 분해. 정책 CRUD, 업로드 6단계 검증, 파일 저장·감사 이력, 정책 변경 이력 도메인, DB 비관적 락 코드와 테스트 작성, 빌드 실행, 실패 원인 분석과 리팩터링에 사용 |
 | Phase 1·2 코드 리뷰 및 결함 수정 | Claude Code (`/code-review` 스킬, high 강도) | Codex가 구현한 코드를 구현에 참여하지 않은 별도 도구로 교차 검증. 업로드 파이프라인/정책 모듈을 병렬 서브에이전트로 나눠 실제 소스를 전량 읽고 11건의 결함을 도출, 각각 실패 테스트(Red)로 재현한 뒤 수정(Green)하는 데 사용 |
 | 형상 관리 | Git / GitHub | 단계별 구현을 커밋으로 분리하고 GitHub 원격 저장소 연결 및 소스 이력 관리에 사용 |
 | 백엔드 기반 | Spring Boot 4.0.7 / Spring Web MVC | 정책 관리 REST API, 요청·응답 처리, 공통 예외 처리 구현에 사용 |
-| 영속성 구현 | Spring Data JPA / Hibernate | 정책 엔티티와 업로드 이력 엔티티 매핑, 성공·차단 행 저장, 리포지토리 조회·저장·삭제 및 변경 감지 구현에 사용 |
-| DB 스키마 관리 | Flyway | 애플리케이션 실행과 테스트 환경에서 동일한 V1 스키마 및 고정 확장자 7종 시드를 재현하기 위해 사용 |
+| 영속성·동시성 구현 | Spring Data JPA / Hibernate | 정책·업로드·정책 변경 이력 엔티티 매핑, 리포지토리 CRUD·변경 감지, `PESSIMISTIC_WRITE`를 사용한 DB 단위 등록 직렬화에 사용 |
+| DB 스키마 관리 | Flyway | V1 초기 스키마·고정 확장자 7종 시드, V2 정책 변경 이력, V3 비관적 락 전용 테이블·시드 행을 애플리케이션과 테스트 환경에 동일하게 재현하는 데 사용 |
 | 로컬·테스트 DB | MySQL 8.4 | 실제 운영 예정 DB의 UNIQUE 제약, 정렬, 저장·삭제 동작을 같은 DBMS에서 검증하기 위해 사용 |
 | 로컬 인프라 | Docker Compose | 로컬 개발용 MySQL과 ClamAV 컨테이너의 포트·볼륨·헬스체크를 재현 가능하게 구성하기 위해 사용 |
 | 통합 테스트 | Testcontainers | 테스트마다 격리된 MySQL을 실행해 Flyway 마이그레이션과 DB 제약을 H2 대체 문법 없이 검증하기 위해 사용 |
@@ -97,6 +98,7 @@
 - **업로드 차단 예외 정보**: 초기 파이프라인은 모든 실패를 일반 `BusinessException`으로 즉시 던져 `matched_extension`과 실패 단계 정보가 사라졌음. 사용자가 문제를 반복해서 지적해 `UploadBlockedException`이 카테고리·상세 로그·매칭 확장자를 운반하고 최상위 서비스가 DB 기록 후 예외를 다시 던지는 구조로 수정.
 - **multipart 크기 설정**: 최초에는 Spring 상한과 업무 상한을 모두 10MB로 설정했으나, 이 경우 요청 파싱 단계에서 먼저 거절되어 실패 이력을 저장할 수 없음을 15단계에서 재확인. 업무 기준 10MB는 유지하면서 Spring 보호 상한을 11/12MB로 분리해 관측성과 자원 보호를 절충.
 - **프론트 화면 구성**: 최초에는 차단 정책과 파일 업로드를 탭으로 분리했으나, 사용자가 정책을 바꾼 직후 업로드를 검증하는 작업 흐름을 고려해 한 페이지의 연속된 섹션으로 재구성. 기능 분리는 컴포넌트 단위로 유지하고 표시 구조만 통합함.
+- **200개 한도 동시성 방식**: AI 코드 리뷰 후 구현한 `synchronized + TransactionTemplate`은 단일 JVM에서는 유효했지만, 사용자가 락 유형을 재확인한 뒤 **비관적 락으로 변경하라고 직접 결정**. 빈 커스텀 테이블을 바로 잠그는 방식 대신 전용 락 행을 두어 다중 인스턴스에서도 동작하도록 수정.
 
 ### 3. 버린 것 & AI 오류 수정 (Rejected & Caught Errors)
 - **섹션 번호 중복 오류**: AI가 general.md 4번 항목을 정리하면서 "4-3(선택범위)"과 "4-3(제외범위)"를 중복 번호로 생성 → 직접 발견하고 수정 지시.
@@ -107,6 +109,8 @@
 - **복잡성을 늘린 형식 통일 리팩터링**: 생성자 형식을 `@RequiredArgsConstructor`로 통일하는 변경을 적용했으나 현재 단계에서는 설정값 주입과 서비스 의존성 흐름을 오히려 읽기 어렵게 만듦. 사용자가 결과를 검토한 뒤 즉시 롤백을 지시했고, 이후 단순한 수동 생성자를 유지함.
 - **확장자 후보 0개 분기 누락**: 문서에는 `...`처럼 빈 문자열 제거 후 조각이 하나도 없으면 차단한다고 명시돼 있었지만 최초 코드에는 해당 분기가 빠졌음. 사용자가 spec.md의 정확한 문구를 다시 제시해 누락을 발견했고 테스트와 함께 보완함.
 - **동시성 락의 첫 수정 시도 자체 결함(AI가 스스로 작성한 테스트로 자기 오류를 포착한 사례)**: 커스텀 확장자 200개 한도의 TOCTOU 레이스를 고치면서 처음엔 `synchronized`만 걸었으나, 직접 작성한 동시성 통합 테스트(`CountDownLatch`로 두 요청 동시 발사)를 돌려보니 여전히 `[201, 201]`로 레이스가 재현됐음. `@Transactional`의 실제 커밋은 메서드가 끝나 락이 풀린 뒤에 일어나기 때문에 `synchronized`가 아무 효과가 없었던 것 — 이를 별도 지적 없이 스스로 진단해 `TransactionTemplate`으로 락을 쥔 채 커밋까지 마치도록 재수정함. **사용자가 반려한 것이 아니라, AI가 검증 테스트를 통해 자기 수정의 불완전함을 스스로 발견하고 고친 사례.**
+
+- **JVM 락의 확장 한계**: 이후 사용자가 기존 구현이 낙관적 락인지 재확인하면서 JVM 단위 직렬화의 서버 확장 한계를 검토했고, DB 비관적 락으로 변경하도록 지시함. 현재는 전용 락 행을 `SELECT ... FOR UPDATE`로 잠가 동일 MySQL을 사용하는 다중 인스턴스에서도 동작하도록 대체함.
 
 > 공통적으로, AI가 생성한 산출물을 그대로 채택하지 않고 **① 과제 원문 요구사항과의 정합성, ② 문서 내부의 논리적 일관성, ③ 문서 간(예: function.md ↔ spec.md) 상호 정합성, ④ 보안·정책 판단의 실제 근거 유무**를 기준으로 매번 검수한 뒤 반영 여부를 결정함. 특히 문서 개수가 늘어날수록(③) AI가 앞서 확정한 내용을 다음 문서에 자동으로 반영하지 못하는 경우가 반복적으로 나타나, **새 문서를 만들 때마다 이전 확정 문서를 다시 첨부하거나 명시적으로 대조 확인을 요구하는 습관**이 필요하다는 점을 확인함.
 
@@ -156,7 +160,7 @@ Codex로 Phase 1·2를 완료한 뒤, **구현에 참여하지 않은 Claude Cod
 | 3 | DB 저장 실패 등 `BusinessException`이 아닌 예외가 발생하면 차단 감사 기록이 전혀 남지 않음 | `UploadService` | catch 범위를 `RuntimeException`으로 확장, `BlockReasonCategory.UNKNOWN_ERROR`로 기록 |
 | 4 | 고아 파일 정리(`deleteQuietly`) 실패 시 로그가 전혀 남지 않아 추적 불가 | `FileStorageService` | 실패 시 `log.error`로 경로·예외 기록 |
 | 5 | `Socket#setSoTimeout`은 쓰기에는 적용되지 않아 clamd가 응답을 멈추면 무한 대기 가능 | `ClamAvScanner` | 소켓 쓰기를 가상 스레드로 분리, `Future.get(timeout)`으로 실제 타임아웃 적용 |
-| 6 | 200개 한도 체크(count)와 저장(insert)이 원자적이지 않아 동시 요청이 한도를 넘길 수 있음(TOCTOU) | `PolicyCommandService` | `synchronized`+`TransactionTemplate`으로 락 안에서 커밋까지 완료하도록 수정(최초 `synchronized`만으로는 불충분했음을 자체 테스트로 발견 후 재수정) |
+| 6 | 200개 한도 체크(count)와 저장(insert)이 원자적이지 않아 동시 요청이 한도를 넘길 수 있음(TOCTOU) | `PolicyCommandService` | 최초 `synchronized`+`TransactionTemplate`으로 단일 JVM 직렬화 후, 사용자 지시로 전용 DB 락 행과 `PESSIMISTIC_WRITE`(`SELECT ... FOR UPDATE`)를 사용하는 방식으로 전환. 동시 요청 `201/422`, 최종 200개 검증 |
 | 7 | Tika가 손상된 입력에 `RuntimeException`을 던지면 "MIME은 절대 차단 안 함" 원칙이 깨짐 | `MimeTypeInspector` | `catch(IOException)` → `catch(Exception)`으로 확장 |
 | 8 | ClamAV 응답을 바이트 단위로 읽어 불필요한 syscall 반복 | `ClamAvScanner` | `BufferedInputStream` 적용 |
 | 9 | 확장자 후보마다 정책 조회 쿼리를 개별 실행(N+1성 패턴) | `ExtensionPolicyValidator`, 리포지토리 | 배치 `IN` 조회 2회로 축소, 반환 타입도 엔티티 대신 확장자 문자열 목록으로 단순화 |
