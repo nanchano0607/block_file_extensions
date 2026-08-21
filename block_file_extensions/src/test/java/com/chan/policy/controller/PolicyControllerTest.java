@@ -2,8 +2,12 @@ package com.chan.policy.controller;
 
 import com.chan.common.exception.BusinessException;
 import com.chan.common.exception.ErrorCode;
+import com.chan.policy.domain.ExtensionPolicyAction;
+import com.chan.policy.domain.ExtensionPolicyType;
 import com.chan.policy.dto.CustomExtensionItemResponse;
 import com.chan.policy.dto.CustomExtensionListResponse;
+import com.chan.policy.dto.ExtensionPolicyHistoryItemResponse;
+import com.chan.policy.dto.ExtensionPolicyHistoryListResponse;
 import com.chan.policy.dto.FixedExtensionResponse;
 import com.chan.policy.service.PolicyCommandService;
 import com.chan.policy.service.PolicyQueryService;
@@ -15,6 +19,7 @@ import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 
 import java.util.List;
+import java.time.LocalDateTime;
 
 import static org.mockito.BDDMockito.given;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
@@ -94,6 +99,46 @@ class PolicyControllerTest {
                 .andExpect(jsonPath("$.data.count").value(0))
                 .andExpect(jsonPath("$.data.limit").value(200))
                 .andExpect(jsonPath("$.data.items").isEmpty());
+    }
+
+    @Test
+    void 정책_변경_이력을_최신순_페이지로_조회한다() throws Exception {
+        LocalDateTime changedAt = LocalDateTime.of(2026, 8, 21, 9, 30);
+        given(policyQueryService.getExtensionPolicyHistory(0, 10)).willReturn(
+                new ExtensionPolicyHistoryListResponse(
+                        0,
+                        10,
+                        1,
+                        1,
+                        false,
+                        false,
+                        List.of(new ExtensionPolicyHistoryItemResponse(
+                                3L,
+                                ExtensionPolicyType.CUSTOM,
+                                "sh",
+                                ExtensionPolicyAction.ADD,
+                                changedAt
+                        ))
+                )
+        );
+
+        mockMvc.perform(get("/api/policy/history")
+                        .param("page", "0")
+                        .param("size", "10"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.success").value(true))
+                .andExpect(jsonPath("$.message").value("조회되었습니다."))
+                .andExpect(jsonPath("$.data.page").value(0))
+                .andExpect(jsonPath("$.data.size").value(10))
+                .andExpect(jsonPath("$.data.totalElements").value(1))
+                .andExpect(jsonPath("$.data.totalPages").value(1))
+                .andExpect(jsonPath("$.data.hasPrevious").value(false))
+                .andExpect(jsonPath("$.data.hasNext").value(false))
+                .andExpect(jsonPath("$.data.items[0].id").value(3))
+                .andExpect(jsonPath("$.data.items[0].policyType").value("CUSTOM"))
+                .andExpect(jsonPath("$.data.items[0].extension").value("sh"))
+                .andExpect(jsonPath("$.data.items[0].action").value("ADD"))
+                .andExpect(jsonPath("$.data.items[0].changedAt").value("2026-08-21T09:30:00"));
     }
 
     @Test

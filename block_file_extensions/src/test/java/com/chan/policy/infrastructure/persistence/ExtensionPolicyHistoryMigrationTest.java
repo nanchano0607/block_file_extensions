@@ -29,7 +29,7 @@ class ExtensionPolicyHistoryMigrationTest {
             statement.executeUpdate("INSERT INTO custom_extension (extension) VALUES ('pdf')");
         }
 
-        Flyway flywayV2 = flyway(null);
+        Flyway flywayV2 = flyway(MigrationVersion.fromVersion("2"));
         flywayV2.migrate();
 
         assertThat(flywayV2.info().current().getVersion().getVersion()).isEqualTo("2");

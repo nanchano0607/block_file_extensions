@@ -3,15 +3,17 @@ package com.chan.policy.service;
 import com.chan.common.exception.BusinessException;
 import com.chan.common.exception.ErrorCode;
 import com.chan.policy.repository.CustomExtensionRepository;
+import com.chan.policy.repository.ExtensionPolicyHistoryRepository;
 import com.chan.policy.repository.FixedExtensionPolicyRepository;
+import com.chan.policy.repository.PolicyWriteLockRepository;
 
-import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.dao.DataIntegrityViolationException;
-import org.springframework.transaction.PlatformTransactionManager;
-import org.springframework.transaction.TransactionStatus;
+
+import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static com.chan.policy.domain.PolicyWriteLock.CUSTOM_EXTENSION_LIMIT;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.Mockito.mock;
@@ -22,14 +24,22 @@ class PolicyCommandServiceTest {
             mock(FixedExtensionPolicyRepository.class);
     private final CustomExtensionRepository customExtensionRepository =
             mock(CustomExtensionRepository.class);
-    private final PlatformTransactionManager transactionManager = mock(PlatformTransactionManager.class);
+    private final PolicyWriteLockRepository policyWriteLockRepository =
+            mock(PolicyWriteLockRepository.class);
+    private final ExtensionPolicyHistoryRepository extensionPolicyHistoryRepository =
+            mock(ExtensionPolicyHistoryRepository.class);
 
     private final PolicyCommandService policyCommandService =
-            new PolicyCommandService(fixedExtensionPolicyRepository, customExtensionRepository, transactionManager);
+            new PolicyCommandService(
+                    fixedExtensionPolicyRepository,
+                    customExtensionRepository,
+                    policyWriteLockRepository,
+                    extensionPolicyHistoryRepository
+            );
 
-    @BeforeEach
-    void stubTransactionManager() {
-        given(transactionManager.getTransaction(any())).willReturn(mock(TransactionStatus.class));
+    PolicyCommandServiceTest() {
+        given(policyWriteLockRepository.findByNameForUpdate(CUSTOM_EXTENSION_LIMIT))
+                .willReturn(Optional.of(mock(com.chan.policy.domain.PolicyWriteLock.class)));
     }
 
     @Test

@@ -26,6 +26,10 @@ public enum ErrorCode {
             "일시적인 오류가 발생했습니다. 잠시 후 다시 시도해주세요."
     ),
     INVALID_REQUEST(HttpStatus.BAD_REQUEST, "요청 형식이 올바르지 않습니다."),
+    POLICY_WRITE_CONTENDED(
+            HttpStatus.CONFLICT,
+            "다른 요청이 정책을 변경하는 중입니다. 잠시 후 다시 시도해주세요."
+    ),
     INTERNAL_SERVER_ERROR(
             HttpStatus.INTERNAL_SERVER_ERROR,
             "일시적인 오류가 발생했습니다. 잠시 후 다시 시도해주세요."

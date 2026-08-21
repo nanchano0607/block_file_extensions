@@ -5,6 +5,7 @@ import com.chan.policy.dto.CreateCustomExtensionRequest;
 import com.chan.policy.dto.CustomExtensionItemResponse;
 import com.chan.policy.dto.CustomExtensionListResponse;
 import com.chan.policy.dto.FixedExtensionResponse;
+import com.chan.policy.dto.ExtensionPolicyHistoryListResponse;
 import com.chan.policy.dto.UpdateFixedExtensionRequest;
 import com.chan.policy.service.PolicyCommandService;
 import com.chan.policy.service.PolicyQueryService;
@@ -22,6 +23,7 @@ import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import java.util.List;
@@ -42,6 +44,17 @@ public class PolicyController {
     @GetMapping("/custom-extensions")
     public ApiResponse<CustomExtensionListResponse> getCustomExtensions() {
         return ApiResponse.success("조회되었습니다.", policyQueryService.getCustomExtensions());
+    }
+
+    @GetMapping("/history")
+    public ApiResponse<ExtensionPolicyHistoryListResponse> getExtensionPolicyHistory(
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "10") int size
+    ) {
+        return ApiResponse.success(
+                "조회되었습니다.",
+                policyQueryService.getExtensionPolicyHistory(page, size)
+        );
     }
 
     @PostMapping("/custom-extensions")
