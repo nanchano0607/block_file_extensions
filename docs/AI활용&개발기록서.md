@@ -3,7 +3,7 @@
 ## 4-1. 프롬프트 / 입력 기록 (일자 및 시간순)
 
 > 도구: Claude (claude.ai) — 문서 설계 단계(general/function/spec/design 4종 세트 작성)에서 사용, 코드리뷰 및 리뷰사항 수정에 사용.<br>
-> 도구: Codex — 개발 계획 점검, Phase 1·2 백엔드/프론트엔드 구현, Phase 5 정책 변경 이력·동시성 제어 코드·테스트 구현에서 사용.
+> 도구: Codex — 개발 계획 점검, Phase 1·2 백엔드/프론트엔드 구현, Phase 5 정책 변경 이력·동시성 제어 코드·테스트 구현, Docker·EC2 운영 배포 구성 및 장애 대응에서 사용.
 
 
 | 일자 / 시간 | 단계 | 입력한 프롬프트 (핵심 내용) | 의도 및 재질문 과정 |
@@ -45,6 +45,10 @@
 | 2026.08.20 (17:03~17:09) | 나머지 findings 이어서 수정 | `"이어서 진행"` | **[의도]** 남은 6건(200개 한도 동시성 레이스, MIME 감지 중 RuntimeException 미처리, 죽은 코드였던 카테고리 폴백 switch, `DataIntegrityViolationException` 과잉 매핑, ClamAV 응답 바이트 단위 읽기, 확장자 후보별 N+1성 쿼리)도 계속 수정하도록 승인.<br>**[결과]** 200개 한도 동시성 수정 과정에서, **AI가 처음에 `synchronized`만 걸었으나 직접 작성한 동시성 통합 테스트(두 요청을 `CountDownLatch`로 동시에 발사)가 여전히 `[201, 201]`로 실패하는 것을 발견** — `@Transactional`의 커밋이 메서드 종료(=락 해제) 이후에 일어나 락이 레이스를 막지 못한다는 원인을 스스로 진단하고 `TransactionTemplate`으로 락 안에서 커밋까지 마치도록 재수정함. 나머지 5건도 각각 실패 테스트로 재현 후 수정(리포지토리 반환 타입을 엔티티 대신 확장자 문자열 목록으로 단순화, 배치 `IN` 쿼리 도입 등). 전체 116개 테스트 clean build 통과. |
 | 2026.08.21 (00:20~00:40) | Phase 2 프론트엔드 실제 API 연결 | `"design.md, spec.md파일 다시 읽어보고, 지금 구현단계 phase1까지는 프론트에 반영되어 있어서. phase2부분 연결해줘. 목데이터 지우고"` | **[의도]** 브라우저 `localStorage` 목 정책과 목 업로드를 제거하고, `design.md` 상태표와 `spec.md` 공통 응답 규격을 실제 Phase 2 API에 연결.<br>**[결과]** `POST /api/upload`에 multipart `file`을 전송하고 `success/message/data`를 처리하도록 구현. `VITE_USE_MOCK_API`, 인위적 대기, `localStorage` 정책·업로드 분기를 제거함. 10MB 초과, 확장자 경고, 업로드 중, 성공, 4xx 차단, 5xx/네트워크 오류 및 재시도를 분리. lint/build와 Vite 프록시 정책 조회, 정상 파일 `200`, 확장자 없는 파일 `422`를 실제 백엔드·MySQL·ClamAV로 검증함. |
 | 2026.08.21 (09:35~09:43) | Phase 5 정책 등록 동시성 제어 개선 | `"비관적락 방식으로 바꿔줘"` | **[의도]** 기존 `synchronized + TransactionTemplate` 락방식을 확인한 뒤, JVM 단위 락에 머물지 않고 동일 DB를 사용하는 여러 서버 인스턴스에서도 200개 한도를 보장하도록 **DB 비관적 쓰기 락으로의 전환을 사용자가 직접 지시**.<br>**[결과]** AI가 빈 `custom_extension` 테이블은 잠글 행이 없어 안전한 락 대상이 아님을 설명하고, Flyway V3에 전용 `policy_write_lock` 테이블과 `CUSTOM_EXTENSION_LIMIT` 단일 행을 추가. Repository에 `@Lock(PESSIMISTIC_WRITE)`를 적용해 실제 `SELECT ... FOR UPDATE`가 실행되도록 하고, 등록 메서드를 `락 획득 → 중복 검사 → count 검사 → insert → commit`의 하나의 `@Transactional` 범위로 재구성. 199개 상태에서 두 요청을 동시 실행한 통합 테스트가 `201/422`, 최종 200개로 통과했고 전체 123개 테스트에서 실패 0건을 확인함. |
+| 2026.08.21 (배포 단계) | Docker Hub 기반 운영 배포 구성 | `"현재 구조를 살펴보고 프론트·백엔드를 Docker 이미지로 배포할 수 있게 구성해줘. EC2에서는 docker-compose.prod.yml로 도커허브에서 이미지를 받아 실행할거야"` | **[의도]** EC2에서 소스 코드를 직접 빌드하지 않고, 로컬에서 만든 frontend·backend 이미지를 Docker Hub에 올린 뒤 운영 서버에서는 Compose 파일과 환경변수만으로 전체 서비스를 재현할 수 있는 배포 구조를 확정.<br>**[결과]** frontend는 React를 빌드해 Nginx가 정적 파일을 제공하고 `/api/*`를 backend로 프록시하는 이미지로, backend는 Spring Boot 실행 이미지로 각각 구성함. 두 이미지를 `linux/amd64` 플랫폼으로 빌드해 Docker Hub에 push하고, `docker-compose.prod.yml`은 Docker Hub의 frontend·backend 이미지와 공개 MySQL·ClamAV 이미지를 pull해 실행하도록 작성함. EC2에는 저장소 전체나 React `dist` 복사 없이 `.env`와 운영 Compose 파일만 두며, 외부에는 frontend의 80번 포트만 공개하고 나머지 서비스는 Docker 내부 네트워크에서 연결하도록 구성함. |
+| 2026.08.21 (EC2 최초 배포) | EC2 기동 장애 진단 및 자원 보완 | `"docker compose로 실행했는데 ClamAV가 unhealthy라 backend와 frontend가 시작되지 않는다"` (Compose 상태·ClamAV 로그 첨부) | **[의도]** 명령을 반복 실행하는 대신 컨테이너 상태, health check, 프로세스와 OOM 여부를 근거로 실제 실패 원인을 찾고 데이터 손실 없이 복구.<br>**[결과]** `docker inspect`의 `oom=true`, `docker top`에서 `clamd` 프로세스가 사라진 점, `free -h`의 가용 메모리 154MiB/Swap 0B를 종합해 t3.small의 메모리 부족으로 확정함. 20GiB EBS 용량과 2GiB RAM은 별개임을 구분하고, 남은 디스크에 2GiB Swap을 생성해 재부팅 후에도 적용되도록 `/etc/fstab`에 등록함. 기존 MySQL·ClamAV 볼륨은 삭제하지 않고 ClamAV만 재시작해 `oom=false`, `healthy`를 확인한 후 전체 스택을 정상 기동함. 이 결과를 배포 문서에 t3.medium 권장/t3.small Swap 필수 조건으로 반영함. |
+| 2026.08.21 (외부 공개) | ngrok HTTPS 터널 및 백그라운드 운영 | `"현재 Docker 구조에 맞는 ngrok 설치부터 HTTPS 주소 생성, 백그라운드 실행까지 가이드해줘"` | **[의도]** 별도 도메인·인증서 없이 평가자가 접근할 HTTPS URL을 만들고 SSH 종료 후에도 터널을 유지.<br>**[결과]** backend 8080은 호스트에 노출되지 않으므로 ngrok 대상이 `8080`이 아니라 frontend Nginx의 `80`임을 확정. Amazon Linux에서 Debian용 `apt` 명령이나 동작하지 않는 RPM 저장소를 쓰지 않고 공식 x86-64 바이너리를 직접 설치하도록 수정함. Authtoken은 Git/.env에 넣지 않고 ngrok 전용 설정에 저장하고, 포그라운드 검증 후 `nohup` 또는 ngrok systemd 서비스로 지속 실행하는 절차와 보안 그룹에서 3306/3310/8080을 열지 않는 원칙을 정리함. |
+| 2026.08.21 (최종 반영) | 프론트 마감 및 선택적 재배포 | `"프론트 문구를 다듬고 필요 없는 문구와 LOCAL 표시를 삭제한 뒤 배포까지 마무리해줘"` | **[의도]** 개발 환경 흔적과 중복 설명을 제거해 제출 화면을 정돈하고, 이미 정상 동작 중인 DB·ClamAV·backend를 건드리지 않은 채 frontend만 안전하게 교체.<br>**[결과]** `LOCAL`, 장식용 영문 라벨, 중복 안내와 개발용 footer 문구를 제거하고 한국어 중심으로 정책·업로드 문구를 간결하게 수정함. lint/build 후 frontend 이미지만 `linux/amd64`로 빌드해 Docker Hub에 push하고, EC2에서 `pull frontend` + `up -d --no-deps frontend`로 교체함. MySQL·ClamAV·backend는 재시작하지 않았으며 최종 `/` HTTP 200과 `/api/policy/fixed-extensions` 정상 응답을 확인함. |
 
 ---
 
@@ -56,7 +60,10 @@
 | 초기 세팅 점검 및 실행 | Claude Code (CLI) | 리포지토리 파일시스템 직접 조사로 문서-실제 상태 gap 확인, Flyway `V1__init.sql` 작성, git 초기화·원격 연결·커밋/푸시 진행 |
 | 개발 계획·Phase 1·2·5 구현 | Codex (코딩 에이전트) | 설계 문서와 실제 소스를 교차 점검하고 작업을 검증 가능한 단계로 분해. 정책 CRUD, 업로드 6단계 검증, 파일 저장·감사 이력, 정책 변경 이력 도메인, DB 비관적 락 코드와 테스트 작성, 빌드 실행, 실패 원인 분석과 리팩터링에 사용 |
 | Phase 1·2 코드 리뷰 및 결함 수정 | Claude Code (`/code-review` 스킬, high 강도) | Codex가 구현한 코드를 구현에 참여하지 않은 별도 도구로 교차 검증. 업로드 파이프라인/정책 모듈을 병렬 서브에이전트로 나눠 실제 소스를 전량 읽고 11건의 결함을 도출, 각각 실패 테스트(Red)로 재현한 뒤 수정(Green)하는 데 사용 |
+| 운영 배포 및 장애 대응 | Codex (코딩 에이전트) | 저장소의 실제 Docker/Nginx/Spring 구조 점검, 운영 Compose·Dockerfile·환경변수 템플릿 작성, EC2 배포 명령 검증, Compose 플러그인 누락·ClamAV OOM·ngrok 설치 오류 진단, 프론트 이미지 선택 배포와 HTTP/API 최종 확인에 사용 |
 | 형상 관리 | Git / GitHub | 단계별 구현을 커밋으로 분리하고 GitHub 원격 저장소 연결 및 소스 이력 관리에 사용 |
+| 운영 컨테이너 배포 | Docker Buildx / Docker Compose / Docker Hub | Apple Silicon에서 `linux/amd64` 이미지를 빌드·push하고 EC2에서 MySQL·ClamAV·backend·frontend를 내부 네트워크와 영속 볼륨으로 실행하는 데 사용 |
+| 외부 HTTPS 공개 | ngrok Agent | EC2의 frontend 80번 포트를 계정에 할당된 HTTPS 개발 도메인으로 터널링하고 SSH 종료·재부팅 이후에도 공개 주소를 유지하는 데 사용 |
 | 백엔드 기반 | Spring Boot 4.0.7 / Spring Web MVC | 정책 관리 REST API, 요청·응답 처리, 공통 예외 처리 구현에 사용 |
 | 영속성·동시성 구현 | Spring Data JPA / Hibernate | 정책·업로드·정책 변경 이력 엔티티 매핑, 리포지토리 CRUD·변경 감지, `PESSIMISTIC_WRITE`를 사용한 DB 단위 등록 직렬화에 사용 |
 | DB 스키마 관리 | Flyway | V1 초기 스키마·고정 확장자 7종 시드, V2 정책 변경 이력, V3 비관적 락 전용 테이블·시드 행을 애플리케이션과 테스트 환경에 동일하게 재현하는 데 사용 |
@@ -87,6 +94,8 @@
 - Phase 1 테스트 DB로 H2 대신 **Testcontainers의 실제 MySQL**을 사용하자는 제안 — Flyway V1의 MySQL 전용 DDL과 UNIQUE 제약을 운영 DB와 같은 조건에서 검증할 수 있다는 근거가 타당해 채택.
 - ClamAV 장애 시 **fail-closed**로 처리하자는 제안 — 파일 검사 시스템의 목적상 가용성보다 미검사 파일을 허용하지 않는 것이 우선이라는 근거가 타당해 채택. 사용자에게는 내부 연결 정보 대신 일반화된 5xx 메시지만 반환하도록 제한.
 - 업로드 성공 DB 기록 실패 시 **이미 저장한 파일을 삭제**하자는 보상 처리 — 파일만 남고 DB 행이 없는 불일치를 방지한다는 목적이 명확해 채택.
+- 운영 환경에서 React를 Spring JAR에 다시 합치지 않고 **Nginx frontend와 Spring backend를 분리**하자는 판단 — 현재 소스와 Dockerfile 구조를 그대로 활용하면서 Nginx 한 곳에서 정적 리소스와 `/api` 프록시를 제공해 브라우저 기준 동일 오리진을 유지할 수 있어 채택.
+- 프론트만 변경할 때 `--no-deps frontend`로 **선택 배포**하자는 제안 — 정상 운영 중인 MySQL·ClamAV·backend를 불필요하게 재시작하지 않고 변경 범위와 다운타임을 줄일 수 있어 채택.
 
 ### 2. 고쳐 쓴 것 (Modified)
 - **ClamAV 처리 방식**: AI는 처음에 "응답지연 우려로 비동기(임시저장→스캔→반영) 검토"를 제안했으나, 과제 성격(인터뷰용 과제, 시간 제약)을 고려해 **동기 방식 + 구현 단순화**로 직접 결정해 반영 지시.
@@ -99,6 +108,8 @@
 - **multipart 크기 설정**: 최초에는 Spring 상한과 업무 상한을 모두 10MB로 설정했으나, 이 경우 요청 파싱 단계에서 먼저 거절되어 실패 이력을 저장할 수 없음을 15단계에서 재확인. 업무 기준 10MB는 유지하면서 Spring 보호 상한을 11/12MB로 분리해 관측성과 자원 보호를 절충.
 - **프론트 화면 구성**: 최초에는 차단 정책과 파일 업로드를 탭으로 분리했으나, 사용자가 정책을 바꾼 직후 업로드를 검증하는 작업 흐름을 고려해 한 페이지의 연속된 섹션으로 재구성. 기능 분리는 컴포넌트 단위로 유지하고 표시 구조만 통합함.
 - **200개 한도 동시성 방식**: AI 코드 리뷰 후 구현한 `synchronized + TransactionTemplate`은 단일 JVM에서는 유효했지만, 사용자가 락 유형을 재확인한 뒤 **비관적 락으로 변경하라고 직접 결정**. 빈 커스텀 테이블을 바로 잠그는 방식 대신 전용 락 행을 두어 다중 인스턴스에서도 동작하도록 수정.
+- **EC2 최소 사양 판단**: 최초 문서에는 t3.small(2GB)을 최소 권장으로 적었으나 실제 ClamAV 시그니처 적재에서 OOM이 재현됨. 실행 결과를 근거로 t3.medium(4GB)을 안정 권장 사양으로 올리고, t3.small은 2GB Swap을 추가하는 조건부 선택으로 수정.
+- **ngrok 실행 방식**: 빠른 확인에는 `nohup ngrok http 80`을 사용하되, 재부팅·프로세스 장애까지 고려한 최종 안내는 설정 파일 기반 systemd 서비스 방식으로 보완.
 
 ### 3. 버린 것 & AI 오류 수정 (Rejected & Caught Errors)
 - **섹션 번호 중복 오류**: AI가 general.md 4번 항목을 정리하면서 "4-3(선택범위)"과 "4-3(제외범위)"를 중복 번호로 생성 → 직접 발견하고 수정 지시.
@@ -111,6 +122,8 @@
 - **동시성 락의 첫 수정 시도 자체 결함(AI가 스스로 작성한 테스트로 자기 오류를 포착한 사례)**: 커스텀 확장자 200개 한도의 TOCTOU 레이스를 고치면서 처음엔 `synchronized`만 걸었으나, 직접 작성한 동시성 통합 테스트(`CountDownLatch`로 두 요청 동시 발사)를 돌려보니 여전히 `[201, 201]`로 레이스가 재현됐음. `@Transactional`의 실제 커밋은 메서드가 끝나 락이 풀린 뒤에 일어나기 때문에 `synchronized`가 아무 효과가 없었던 것 — 이를 별도 지적 없이 스스로 진단해 `TransactionTemplate`으로 락을 쥔 채 커밋까지 마치도록 재수정함. **사용자가 반려한 것이 아니라, AI가 검증 테스트를 통해 자기 수정의 불완전함을 스스로 발견하고 고친 사례.**
 
 - **JVM 락의 확장 한계**: 이후 사용자가 기존 구현이 낙관적 락인지 재확인하면서 JVM 단위 직렬화의 서버 확장 한계를 검토했고, DB 비관적 락으로 변경하도록 지시함. 현재는 전용 락 행을 `SELECT ... FOR UPDATE`로 잠가 동일 MySQL을 사용하는 다중 인스턴스에서도 동작하도록 대체함.
+- **Docker Compose 자동 포함 가정**: AI가 Amazon Linux의 Docker 패키지에 Compose v2가 포함된다고 안내했으나 실제 EC2에서는 `docker compose` 명령 자체가 없었음. 오류 출력에서 `compose`가 Docker 하위 명령으로 인식되지 않는 것을 확인하고, 공식 CLI 플러그인을 사용자 경로에 직접 설치하는 절차로 수정함.
+- **ngrok RPM 저장소 안내 오류**: 최초 AI 안내의 `rpm.ngrok.com`은 EC2에서 DNS 조회가 실패했고, 대시보드의 기본 Linux 안내는 Debian용 `apt` 명령이라 Amazon Linux에 적용할 수 없었음. 실패한 저장소 방식을 폐기하고 공식 `amd64` tarball을 `/usr/local/bin`에 직접 설치하는 방법으로 교체함. **AI가 제시한 설치 명령도 대상 OS와 실제 네트워크에서 반드시 검증해야 한다는 사례**로 기록함.
 
 > 공통적으로, AI가 생성한 산출물을 그대로 채택하지 않고 **① 과제 원문 요구사항과의 정합성, ② 문서 내부의 논리적 일관성, ③ 문서 간(예: function.md ↔ spec.md) 상호 정합성, ④ 보안·정책 판단의 실제 근거 유무**를 기준으로 매번 검수한 뒤 반영 여부를 결정함. 특히 문서 개수가 늘어날수록(③) AI가 앞서 확정한 내용을 다음 문서에 자동으로 반영하지 못하는 경우가 반복적으로 나타나, **새 문서를 만들 때마다 이전 확정 문서를 다시 첨부하거나 명시적으로 대조 확인을 요구하는 습관**이 필요하다는 점을 확인함.
 
