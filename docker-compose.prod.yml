@@ -1,0 +1,89 @@
+name: fileguard
+
+services:
+  mysql:
+    image: mysql:8.4
+    container_name: fileguard-mysql
+    restart: unless-stopped
+    environment:
+      MYSQL_DATABASE: ${DB_NAME:-file_guard}
+      MYSQL_USER: ${DB_USERNAME:-file_guard}
+      MYSQL_PASSWORD: ${DB_PASSWORD:?DB_PASSWORD is required}
+      MYSQL_ROOT_PASSWORD: ${DB_ROOT_PASSWORD:?DB_ROOT_PASSWORD is required}
+      TZ: UTC
+    command:
+      - --character-set-server=utf8mb4
+      - --collation-server=utf8mb4_unicode_ci
+    volumes:
+      - mysql_data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD-SHELL", "mysqladmin ping -h 127.0.0.1 -uroot -p$${MYSQL_ROOT_PASSWORD} --silent"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 20s
+    networks:
+      - fileguard-network
+    # 컨테이너 네트워크 내부에서만 접근 — 호스트 포트로 노출하지 않는다.
+
+  clamav:
+    image: clamav/clamav:1.5-debian
+    container_name: fileguard-clamav
+    restart: unless-stopped
+    volumes:
+      - clamav_data:/var/lib/clamav
+    healthcheck:
+      test: ["CMD-SHELL", "clamdscan --ping=1"]
+      interval: 15s
+      timeout: 10s
+      retries: 20
+      start_period: 120s
+    networks:
+      - fileguard-network
+
+  backend:
+    image: ${DOCKERHUB_NAMESPACE:-kimchano}/block-file-extensions-backend:${IMAGE_TAG:-latest}
+    container_name: fileguard-backend
+    restart: unless-stopped
+    environment:
+      SERVER_PORT: 8080
+      DB_URL: jdbc:mysql://mysql:3306/${DB_NAME:-file_guard}?useUnicode=true&characterEncoding=utf8&serverTimezone=UTC
+      DB_USERNAME: ${DB_USERNAME:-file_guard}
+      DB_PASSWORD: ${DB_PASSWORD:?DB_PASSWORD is required}
+      MAX_FILE_SIZE: ${MAX_FILE_SIZE:-10MB}
+      MAX_MULTIPART_FILE_SIZE: ${MAX_MULTIPART_FILE_SIZE:-11MB}
+      MAX_REQUEST_SIZE: ${MAX_REQUEST_SIZE:-12MB}
+      UPLOAD_DIR: /app/uploads
+      CLAMAV_HOST: clamav
+      CLAMAV_PORT: 3310
+      CLAMAV_TIMEOUT: ${CLAMAV_TIMEOUT:-10000}
+    volumes:
+      - uploads_data:/app/uploads
+    depends_on:
+      mysql:
+        condition: service_healthy
+      clamav:
+        condition: service_healthy
+    networks:
+      - fileguard-network
+    # frontend 컨테이너가 /api를 프록시해주므로 호스트 포트로 직접 노출하지 않는다.
+
+  frontend:
+    image: ${DOCKERHUB_NAMESPACE:-kimchano}/block-file-extensions-frontend:${IMAGE_TAG:-latest}
+    container_name: fileguard-frontend
+    restart: unless-stopped
+    ports:
+      - "80:80"
+    depends_on:
+      - backend
+    networks:
+      - fileguard-network
+
+volumes:
+  mysql_data:
+  clamav_data:
+  uploads_data:
+
+networks:
+  fileguard-network:
+    driver: bridge

@@ -19,7 +19,7 @@
 | [docs/CONSIDERATIONS.md](docs/CONSIDERATIONS.md) | 기획/보안/예외/운영 관점 판단과 근거 |
 | [docs/AI활용&개발기록서.md](docs/AI활용&개발기록서.md) | AI 프롬프트 기록, 사용 도구, 판단 근거 회고 |
 | [docs/LOCAL_DEVELOPMENT.md](docs/LOCAL_DEVELOPMENT.md) | 로컬 개발 환경 실행 방법 |
-| [docs/DEPLOYMENT_ENV.md](docs/DEPLOYMENT_ENV.md) | 배포 환경변수 관리 |
+| [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) | Docker Hub + EC2 docker compose 배포 가이드 |
 
 ---
 
@@ -68,13 +68,17 @@ cd block_file_extensions
 
 ```bash
 cd frontend
-cp .env.example .env
 npm install
 npm run dev
 ```
 
-기본값은 `VITE_USE_MOCK_API=true`(백엔드 없이 localStorage 목업으로 동작)입니다.
-백엔드와 연동하려면 `frontend/.env`에서 `VITE_USE_MOCK_API=false`로 변경하세요.
+`vite.config.js`의 프록시 설정으로 `/api/*` 요청이 `http://localhost:8080`(백엔드)으로 전달됩니다.
+
+---
+
+## 배포
+
+GitHub Actions는 사용하지 않습니다. 로컬(또는 어디서든)에서 이미지를 빌드해 Docker Hub에 push하고, EC2에서 `docker-compose.prod.yml`로 `pull` + `up -d`만 실행하는 방식입니다. `.env`는 저장소에 올리지 않고 EC2에 직접 작성합니다. 절차는 [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) 참고.
 
 ---
 
@@ -114,6 +118,24 @@ npm run dev
 
 인덱스: `custom_extension.extension` UNIQUE, `upload_file.created_at` / `upload_file.status`.
 
+### extension_policy_history — 정책 변경 이력 (F3)
+
+| 컬럼 | 타입 | 제약 | 설명 |
+|---|---|---|---|
+| `id` | `BIGINT` | PK, AUTO_INCREMENT | |
+| `policy_type` | `VARCHAR(10)` | NOT NULL | `FIXED` / `CUSTOM` |
+| `extension` | `VARCHAR(20)` | NOT NULL | |
+| `action` | `VARCHAR(20)` | NOT NULL | `BLOCK_ON` / `BLOCK_OFF` / `ADD` / `DELETE` |
+| `changed_at` | `DATETIME` | NOT NULL, DEFAULT CURRENT_TIMESTAMP | |
+
+인덱스: `extension`, `(changed_at DESC, id DESC)` (이력 조회 정렬용).
+
+### policy_write_lock — 커스텀 확장자 200개 한도 동시성 제어용 락 행
+
+| 컬럼 | 타입 | 제약 | 설명 |
+|---|---|---|---|
+| `lock_name` | `VARCHAR(50)` | PK | 고정 시드 값 `CUSTOM_EXTENSION_LIMIT` 1행만 존재. `SELECT ... FOR UPDATE`로 커스텀 확장자 등록 시 개수 체크와 저장을 원자화하는 데 사용 |
+
 ---
 
 ## 검증 파이프라인 (요약)
@@ -133,9 +155,11 @@ npm run dev
 
 ```
 .
-├── block_file_extensions/   # Spring Boot 백엔드
-├── frontend/                 # React (Vite) 프론트엔드
-├── docs/                     # 설계 문서, 고려사항, AI 활용 기록
+├── block_file_extensions/    # Spring Boot 백엔드 (Dockerfile 포함)
+├── frontend/                 # React (Vite) 프론트엔드 (Dockerfile, nginx.conf 포함)
+├── docs/                     # 설계 문서, 고려사항, AI 활용 기록, 배포 가이드
 ├── docker-compose.yml        # MySQL, ClamAV (로컬 개발용)
-└── .env.example
+├── docker-compose.prod.yml   # mysql/clamav/backend/frontend (EC2 배포용)
+├── .env.example               # 로컬 개발용 환경변수 예시
+└── .env.production.example    # EC2 배포용 환경변수 예시 (docs/DEPLOYMENT.md 참고)
 ```

@@ -174,9 +174,8 @@ function PolicyPanel({ onPolicyChange, onHistoryChange }) {
     <section id="policy" className="panel" aria-labelledby="policy-title">
       <div className="panel-heading">
         <div>
-          <span className="eyebrow">POLICY</span>
           <h2 id="policy-title">파일 확장자 차단</h2>
-          <p>등록한 정책은 파일 업로드 시 서버에서 최종 적용됩니다.</p>
+          <p>업로드를 제한할 확장자를 설정합니다.</p>
         </div>
         <span className="save-state"><span className="save-dot" /> 자동 저장</span>
       </div>
@@ -184,7 +183,7 @@ function PolicyPanel({ onPolicyChange, onHistoryChange }) {
       <div className="policy-section">
         <div className="section-label">
           <span className="section-number">01</span>
-          <div><h3>고정 확장자</h3><p>자주 차단하는 실행 파일 형식입니다.</p></div>
+          <div><h3>고정 확장자</h3><p>주요 실행 파일 확장자를 선택해 차단합니다.</p></div>
         </div>
         <div className="fixed-grid">
           {fixed.map((item) => (
@@ -204,7 +203,7 @@ function PolicyPanel({ onPolicyChange, onHistoryChange }) {
       <div className="policy-section">
         <div className="section-label section-label--row">
           <span className="section-number">02</span>
-          <div><h3>커스텀 확장자</h3><p>영문과 숫자 조합으로 최대 20자까지 등록할 수 있습니다.</p></div>
+          <div><h3>커스텀 확장자</h3><p>필요한 확장자를 직접 추가합니다.</p></div>
           <strong className={atLimit ? 'counter counter--limit' : 'counter'}>{custom.count} / {custom.limit}</strong>
         </div>
         <form className="extension-form" onSubmit={addCustom}>
@@ -281,9 +280,8 @@ function PolicyHistoryPanel() {
     <section id="history" className="panel" aria-labelledby="history-title">
       <div className="panel-heading history-heading">
         <div>
-          <span className="eyebrow">AUDIT LOG</span>
           <h2 id="history-title">정책 변경 이력</h2>
-          <p>고정·커스텀 확장자 정책의 변경 내역을 최신순으로 확인합니다.</p>
+          <p>확장자 정책 변경 내역을 최신순으로 확인합니다.</p>
         </div>
         <span className="history-total">총 {history.totalElements}건</span>
       </div>
@@ -366,7 +364,6 @@ function UploadPanel({ blockedExtensions }) {
     return (
       <section id="upload" className="panel result-panel" aria-live="polite">
         <div className={`status-icon ${isSuccess ? 'status-icon--success' : 'status-icon--error'}`}>{isSuccess ? '✓' : '!'}</div>
-        <span className="eyebrow">{isSuccess ? 'UPLOAD COMPLETE' : isServerError ? 'UPLOAD ERROR' : 'UPLOAD REJECTED'}</span>
         <h2>{message}</h2>
         {file && <p className="result-file">{file.name} · {formatBytes(file.size)}</p>}
         <button className="button button--primary" onClick={isServerError ? upload : reset}>
@@ -379,7 +376,7 @@ function UploadPanel({ blockedExtensions }) {
   return (
     <section id="upload" className="panel" aria-labelledby="upload-title">
       <div className="panel-heading">
-        <div><span className="eyebrow">UPLOAD</span><h2 id="upload-title">안전한 파일 업로드</h2><p>파일은 정책 확인과 보안 검사를 거친 후 저장됩니다.</p></div>
+        <div><h2 id="upload-title">파일 업로드</h2><p>확장자 정책과 보안 검사를 통과한 파일만 저장됩니다.</p></div>
         <span className="limit-badge">최대 10 MB</span>
       </div>
       <div className={`drop-zone${dragging ? ' drop-zone--dragging' : ''}${file ? ' drop-zone--selected' : ''}`}
@@ -394,9 +391,9 @@ function UploadPanel({ blockedExtensions }) {
           : <><strong>파일을 여기로 끌어다 놓으세요</strong><span>또는</span><button className="button button--secondary" type="button" onClick={() => fileInput.current?.click()}>파일 선택</button></>}
       </div>
       {sizeRejected && <div className="notice notice--error" role="alert"><b>!</b> 파일 크기 제한을 초과했습니다.</div>}
-      {!sizeRejected && extensionWarning && <div className="notice notice--warning"><b>!</b> 현재 정책상 차단된 확장자일 수 있습니다. 최종 판단은 서버에서 수행합니다.</div>}
+      {!sizeRejected && extensionWarning && <div className="notice notice--warning"><b>!</b> 현재 정책에서 차단한 확장자가 포함되어 있습니다.</div>}
       <button className="button button--primary button--full" disabled={!file || sizeRejected || state === 'uploading'} onClick={upload}>
-        {state === 'uploading' ? <><Spinner small /> 업로드 중...</> : '보안 검사 후 업로드'}
+        {state === 'uploading' ? <><Spinner small /> 업로드 중...</> : '검사 후 업로드'}
       </button>
     </section>
   )
@@ -419,13 +416,11 @@ function App() {
           <a href="#history">변경 이력</a>
           <a href="#upload">파일 업로드</a>
         </nav>
-        <span className="environment">LOCAL</span>
       </header>
       <main id="top">
         <div className="page-intro">
-          <p className="breadcrumb">SECURITY / FILE CONTROL</p>
           <h1>파일 업로드 보안</h1>
-          <p>차단 정책을 관리하고, 선택한 파일을 다단계 보안 검사 후 안전하게 저장하세요.</p>
+          <p>확장자 차단 정책을 관리하고 업로드 파일을 안전하게 검사합니다.</p>
         </div>
         <div className="page-stack">
           <PolicyPanel
@@ -436,7 +431,7 @@ function App() {
           <UploadPanel blockedExtensions={blockedExtensions} />
         </div>
       </main>
-      <footer><span>FileGuard</span><span>Server-side validation enabled</span></footer>
+      <footer><span>FileGuard</span></footer>
     </div>
   )
 }
