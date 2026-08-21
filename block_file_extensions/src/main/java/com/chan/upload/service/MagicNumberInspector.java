@@ -38,6 +38,7 @@ public class MagicNumberInspector {
             FileSignature signature = detectedSignature.get();
             if (!signature.isAllowedFor(extensionCandidates)) {
                 block(file, signature, requestId);
+                return;
             }
 
             log.info(
