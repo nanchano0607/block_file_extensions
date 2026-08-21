@@ -22,4 +22,7 @@ export const policyApi = {
   deleteCustom(id) {
     return request(`/api/policy/custom-extensions/${id}`, { method: 'DELETE' })
   },
+  getHistory(page = 0, size = 10) {
+    return request(`/api/policy/history?page=${page}&size=${size}`)
+  },
 }

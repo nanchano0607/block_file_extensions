@@ -4,7 +4,15 @@ import { uploadApi } from './api/uploadApi'
 import './App.css'
 
 const MAX_FILE_SIZE = 10 * 1024 * 1024
+const HISTORY_PAGE_SIZE = 10
 const SERVER_ERROR_MESSAGE = '일시적인 오류가 발생했습니다. 잠시 후 다시 시도해주세요.'
+
+const HISTORY_ACTION_LABELS = {
+  BLOCK_ON: '고정 차단 활성화',
+  BLOCK_OFF: '고정 차단 비활성화',
+  ADD: '커스텀 추가',
+  DELETE: '커스텀 삭제',
+}
 
 function formatBytes(bytes) {
   if (bytes < 1024) return `${bytes} B`
@@ -22,11 +30,21 @@ function normalizeCustomExtension(value) {
   return (trimmed.startsWith('.') ? trimmed.slice(1) : trimmed).toLowerCase()
 }
 
+function formatHistoryTime(value) {
+  if (!value) return '-'
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) return value
+  return new Intl.DateTimeFormat('ko-KR', {
+    year: 'numeric', month: '2-digit', day: '2-digit',
+    hour: '2-digit', minute: '2-digit', second: '2-digit',
+  }).format(date)
+}
+
 function Spinner({ small = false }) {
   return <span className={`spinner${small ? ' spinner--small' : ''}`} aria-hidden="true" />
 }
 
-function PolicyPanel({ onPolicyChange }) {
+function PolicyPanel({ onPolicyChange, onHistoryChange }) {
   const [fixed, setFixed] = useState([])
   const [custom, setCustom] = useState({ count: 0, limit: 200, items: [] })
   const [input, setInput] = useState('')
@@ -38,7 +56,7 @@ function PolicyPanel({ onPolicyChange }) {
   const [fixedError, setFixedError] = useState('')
   const [formError, setFormError] = useState('')
 
-  const load = async () => {
+  const load = useCallback(async () => {
     setLoading(true)
     setLoadError('')
     try {
@@ -48,31 +66,23 @@ function PolicyPanel({ onPolicyChange }) {
       ])
       setFixed(fixedData)
       setCustom(customData)
-      onPolicyChange?.(fixedData, customData.items)
     } catch {
       setLoadError('정책을 불러오지 못했습니다.')
     } finally {
       setLoading(false)
     }
-  }
+  }, [])
 
   useEffect(() => {
-    let active = true
-    Promise.all([policyApi.getFixed(), policyApi.getCustom()])
-      .then(([fixedData, customData]) => {
-        if (!active) return
-        setFixed(fixedData)
-        setCustom(customData)
-        onPolicyChange?.(fixedData, customData.items)
-      })
-      .catch(() => {
-        if (active) setLoadError('정책을 불러오지 못했습니다.')
-      })
-      .finally(() => {
-        if (active) setLoading(false)
-      })
-    return () => { active = false }
-  }, [onPolicyChange])
+    load()
+  }, [load])
+
+  // fixed/custom 중 어느 쪽이 바뀌었든 이 effect가 항상 최신 커밋된 상태로 실행되므로,
+  // 각 변경 핸들러가 서로 상대방 도메인의 값을 클로저로 직접 넘길 때 생기던
+  // stale-closure 레이스(동시에 정책을 여러 개 바꾸면 blockedExtensions가 어긋나는 문제)가 없다.
+  useEffect(() => {
+    onPolicyChange?.(fixed, custom.items)
+  }, [fixed, custom, onPolicyChange])
 
   const toggleFixed = async (item) => {
     const nextBlocked = !item.blocked
@@ -83,10 +93,7 @@ function PolicyPanel({ onPolicyChange }) {
     ))
     try {
       await policyApi.updateFixed(item.extension, nextBlocked)
-      const next = fixed.map((value) =>
-        value.extension === item.extension ? { ...value, blocked: nextBlocked } : value,
-      )
-      onPolicyChange?.(next, custom.items)
+      onHistoryChange?.()
     } catch (error) {
       setFixed((items) => items.map((value) =>
         value.extension === item.extension ? item : value,
@@ -112,10 +119,9 @@ function PolicyPanel({ onPolicyChange }) {
     setAdding(true)
     try {
       const created = await policyApi.addCustom(normalized)
-      const next = { ...custom, count: custom.count + 1, items: [...custom.items, created] }
-      setCustom(next)
+      setCustom((current) => ({ ...current, count: current.count + 1, items: [...current.items, created] }))
       setInput('')
-      onPolicyChange?.(fixed, next.items)
+      onHistoryChange?.()
     } catch (error) {
       setFormError(error.message || '일시적인 오류가 발생했습니다. 잠시 후 다시 시도해주세요.')
     } finally {
@@ -126,18 +132,22 @@ function PolicyPanel({ onPolicyChange }) {
   const deleteCustom = async (item) => {
     setFormError('')
     setDeleting(item.id)
-    const previous = custom
-    const next = {
-      ...custom,
-      count: custom.count - 1,
-      items: custom.items.filter((value) => value.id !== item.id),
-    }
-    setCustom(next)
+    setCustom((current) => ({
+      ...current,
+      count: current.count - 1,
+      items: current.items.filter((value) => value.id !== item.id),
+    }))
     try {
       await policyApi.deleteCustom(item.id)
-      onPolicyChange?.(fixed, next.items)
+      onHistoryChange?.()
     } catch (error) {
-      setCustom(previous)
+      // 삭제 시도 이전 전체 스냅샷이 아니라, 현재 상태에 이 항목만 되돌려놓는다 —
+      // 그래야 이 요청이 실패하는 동안 다른 항목이 성공적으로 삭제/추가됐어도 덮어쓰지 않는다.
+      setCustom((current) => ({
+        ...current,
+        count: current.count + 1,
+        items: [...current.items, item],
+      }))
       setFormError(error.message || '삭제에 실패했습니다.')
     } finally {
       setDeleting(null)
@@ -225,6 +235,94 @@ function PolicyPanel({ onPolicyChange }) {
   )
 }
 
+function PolicyHistoryPanel() {
+  const [page, setPage] = useState(0)
+  const [history, setHistory] = useState({
+    page: 0,
+    size: HISTORY_PAGE_SIZE,
+    totalElements: 0,
+    totalPages: 0,
+    hasPrevious: false,
+    hasNext: false,
+    items: [],
+  })
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState('')
+  const [retryKey, setRetryKey] = useState(0)
+
+  useEffect(() => {
+    let active = true
+    policyApi.getHistory(page, HISTORY_PAGE_SIZE)
+      .then((data) => {
+        if (active) setHistory(data)
+      })
+      .catch(() => {
+        if (active) setError('정책 변경 이력을 불러오지 못했습니다.')
+      })
+      .finally(() => {
+        if (active) setLoading(false)
+      })
+    return () => { active = false }
+  }, [page, retryKey])
+
+  const movePage = (nextPage) => {
+    setLoading(true)
+    setError('')
+    setPage(nextPage)
+  }
+
+  const retry = () => {
+    setLoading(true)
+    setError('')
+    setRetryKey((value) => value + 1)
+  }
+
+  return (
+    <section id="history" className="panel" aria-labelledby="history-title">
+      <div className="panel-heading history-heading">
+        <div>
+          <span className="eyebrow">AUDIT LOG</span>
+          <h2 id="history-title">정책 변경 이력</h2>
+          <p>고정·커스텀 확장자 정책의 변경 내역을 최신순으로 확인합니다.</p>
+        </div>
+        <span className="history-total">총 {history.totalElements}건</span>
+      </div>
+
+      {loading && <div className="history-state"><Spinner /><span>이력을 불러오는 중입니다.</span></div>}
+      {!loading && error && (
+        <div className="history-state history-state--error" role="alert">
+          <span>{error}</span>
+          <button className="button button--secondary" onClick={retry}>다시 시도</button>
+        </div>
+      )}
+      {!loading && !error && history.items.length === 0 && (
+        <div className="history-state">아직 정책 변경 이력이 없습니다.</div>
+      )}
+      {!loading && !error && history.items.length > 0 && (
+        <>
+          <div className="history-list">
+            {history.items.map((item) => (
+              <article className="history-item" key={item.id}>
+                <span className={`history-type history-type--${item.policyType.toLowerCase()}`}>
+                  {item.policyType === 'FIXED' ? '고정' : '커스텀'}
+                </span>
+                <strong>.{item.extension}</strong>
+                <span className="history-action">{HISTORY_ACTION_LABELS[item.action] || item.action}</span>
+                <time dateTime={item.changedAt}>{formatHistoryTime(item.changedAt)}</time>
+              </article>
+            ))}
+          </div>
+          <div className="history-pagination" aria-label="정책 변경 이력 페이지">
+            <button className="button button--secondary" disabled={!history.hasPrevious} onClick={() => movePage(page - 1)}>이전</button>
+            <span>{history.totalPages === 0 ? 0 : history.page + 1} / {history.totalPages}</span>
+            <button className="button button--secondary" disabled={!history.hasNext} onClick={() => movePage(page + 1)}>다음</button>
+          </div>
+        </>
+      )}
+    </section>
+  )
+}
+
 function UploadPanel({ blockedExtensions }) {
   const fileInput = useRef(null)
   const [file, setFile] = useState(null)
@@ -306,6 +404,7 @@ function UploadPanel({ blockedExtensions }) {
 
 function App() {
   const [blockedExtensions, setBlockedExtensions] = useState(new Set())
+  const [historyRevision, setHistoryRevision] = useState(0)
   const updatePolicy = useCallback((fixed, custom) => setBlockedExtensions(new Set([
     ...fixed.filter((item) => item.blocked).map((item) => item.extension),
     ...custom.map((item) => item.extension),
@@ -317,6 +416,7 @@ function App() {
         <a className="brand" href="#top"><span className="brand-mark">F</span><span>FileGuard</span></a>
         <nav aria-label="주요 메뉴">
           <a href="#policy">차단 정책</a>
+          <a href="#history">변경 이력</a>
           <a href="#upload">파일 업로드</a>
         </nav>
         <span className="environment">LOCAL</span>
@@ -328,7 +428,11 @@ function App() {
           <p>차단 정책을 관리하고, 선택한 파일을 다단계 보안 검사 후 안전하게 저장하세요.</p>
         </div>
         <div className="page-stack">
-          <PolicyPanel onPolicyChange={updatePolicy} />
+          <PolicyPanel
+            onPolicyChange={updatePolicy}
+            onHistoryChange={() => setHistoryRevision((value) => value + 1)}
+          />
+          <PolicyHistoryPanel key={historyRevision} />
           <UploadPanel blockedExtensions={blockedExtensions} />
         </div>
       </main>
